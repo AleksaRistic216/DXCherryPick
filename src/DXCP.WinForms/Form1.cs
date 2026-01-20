@@ -1,12 +1,40 @@
 using System.Diagnostics;
+using DevExpress.XtraBars;
+using DevExpress.XtraEditors;
 
 namespace DXCP.WinForms;
 
 public partial class Form1 : Form {
     private GitHubService? _gitHubService;
+    private readonly RepositoryConfigManager _repoConfigManager = new();
 
     public Form1() {
         InitializeComponent();
+        SetupContextMenu();
+    }
+
+    private void SetupContextMenu() {
+        gridView.MouseUp += GridView_MouseUp;
+    }
+
+    private void GridView_MouseUp(object? sender, MouseEventArgs e) {
+        if (e.Button != MouseButtons.Right)
+            return;
+
+        var hitInfo = gridView.CalcHitInfo(e.Location);
+        if (!hitInfo.InRow)
+            return;
+
+        gridView.FocusedRowHandle = hitInfo.RowHandle;
+        popupMenuGrid.ShowPopup(gridControl.PointToScreen(e.Location));
+    }
+
+    private async void barButtonCherryPick_ItemClick(object sender, ItemClickEventArgs e) {
+        var pr = gridView.GetFocusedRow() as PullRequest;
+        if (pr == null)
+            return;
+
+        await PerformCherryPickAsync(pr);
     }
 
     private async void Form1_Load(object sender, EventArgs e) {
@@ -92,6 +120,7 @@ public partial class Form1 : Form {
             var pullRequests = await _gitHubService.GetMyPullRequestsAsync();
             gridControl.DataSource = pullRequests;
             gridView.BestFitColumns();
+            ApplyDefaultFilter();
             labelStatus.Text = $"Loaded {pullRequests.Count} pull requests for {username} in DevExpress";
         }
         catch(Exception ex) {
@@ -104,6 +133,245 @@ public partial class Form1 : Form {
         finally {
             btnRefresh.Enabled = true;
         }
+    }
+
+    private void ApplyDefaultFilter() {
+        var twoWeeksAgo = DateTime.Now.AddDays(-14).ToString("MM/dd/yyyy");
+        gridView.ActiveFilterString = $"Contains([Repository], 'dxvcs') AND [CreatedAt] >= #{twoWeeksAgo}#";
+    }
+
+    private async Task PerformCherryPickAsync(PullRequest pr) {
+        if (_gitHubService == null)
+            return;
+
+        try {
+            // Check if Git is installed
+            if (!await GitService.IsGitInstalledAsync()) {
+                XtraMessageBox.Show(
+                    "Git is not installed or not found in PATH.\n\nPlease install Git and ensure it's accessible from the command line.",
+                    "Git Not Found",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                return;
+            }
+
+            // Get or prompt for worktree parent folder
+            var worktreeParent = await GetOrPromptForWorktreeParentAsync(pr.Repository);
+            if (string.IsNullOrEmpty(worktreeParent))
+                return;
+
+            labelStatus.Text = "Loading PR commits and branches...";
+            Application.DoEvents();
+
+            // Get PR commits
+            var commits = await _gitHubService.GetPullRequestCommitsAsync(pr.Repository, pr.Number);
+            if (commits.Count == 0) {
+                XtraMessageBox.Show(
+                    "No commits found for this pull request.",
+                    "No Commits",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                labelStatus.Text = "Ready";
+                return;
+            }
+
+            // Get versioned branches, excluding the PR's base branch
+            var allVersionedBranches = await _gitHubService.GetVersionedBranchesAsync(pr.Repository);
+            var targetBranches = allVersionedBranches
+                .Where(b => !b.Equals(pr.BaseBranch, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (targetBranches.Count == 0) {
+                XtraMessageBox.Show(
+                    "No target branches found for cherry-picking.\n\nThe repository needs versioned branches (e.g., 2025.2, 2025.1).",
+                    "No Target Branches",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                labelStatus.Text = "Ready";
+                return;
+            }
+
+            labelStatus.Text = "Ready";
+
+            // Show cherry-pick dialog
+            using var dialog = new CherryPickDialog(pr, commits, targetBranches);
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            var selectedBranches = dialog.SelectedBranches;
+            if (selectedBranches.Count == 0)
+                return;
+
+            // Perform cherry-pick for each selected branch using worktrees
+            await ExecuteCherryPicksAsync(pr, commits, selectedBranches, worktreeParent);
+        }
+        catch (Exception ex) {
+            Debug.WriteLine($"Cherry-pick error: {ex}");
+            XtraMessageBox.Show(
+                $"An error occurred during cherry-pick:\n\n{ex.Message}",
+                "Cherry Pick Error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            labelStatus.Text = "Cherry-pick failed";
+        }
+    }
+
+    private async Task<string?> GetOrPromptForWorktreeParentAsync(string githubRepo) {
+        var existingPath = _repoConfigManager.GetWorktreeParentFolder(githubRepo);
+        if (!string.IsNullOrEmpty(existingPath) && Directory.Exists(existingPath)) {
+            return existingPath;
+        }
+
+        using var folderDialog = new FolderBrowserDialog {
+            Description = $"Select the parent folder containing worktrees for {githubRepo}\n(e.g., folder containing 2025.2, 2025.1 subfolders)",
+            UseDescriptionForTitle = true
+        };
+
+        if (folderDialog.ShowDialog(this) != DialogResult.OK)
+            return null;
+
+        var selectedPath = folderDialog.SelectedPath;
+        _repoConfigManager.SetWorktreeParentFolder(githubRepo, selectedPath);
+        return selectedPath;
+    }
+
+    private async Task ExecuteCherryPicksAsync(PullRequest pr, List<CommitInfo> commits, List<string> targetBranches, string worktreeParent) {
+        var results = new List<(string Branch, bool Success, string? Error)>();
+
+        foreach (var targetBranch in targetBranches) {
+            labelStatus.Text = $"Cherry-picking to {targetBranch}...";
+            Application.DoEvents();
+
+            // Get worktree path for this branch
+            var worktreePath = Path.Combine(worktreeParent, targetBranch);
+
+            if (!Directory.Exists(worktreePath)) {
+                results.Add((targetBranch, false, $"Worktree folder not found: {worktreePath}"));
+                continue;
+            }
+
+            var gitService = new GitService(worktreePath);
+
+            // Validate it's a git repository
+            if (!await gitService.IsValidGitRepositoryAsync()) {
+                results.Add((targetBranch, false, $"Not a valid Git repository: {worktreePath}"));
+                continue;
+            }
+
+            // Check for uncommitted changes in this worktree
+            if (await gitService.HasUncommittedChangesAsync()) {
+                results.Add((targetBranch, false, $"Uncommitted changes in worktree. Please commit or stash first."));
+                continue;
+            }
+
+            var cherryPickBranch = $"cherry-pick/#{pr.Number}-to-{targetBranch}";
+
+            try {
+                // Fetch latest
+                var fetchResult = await gitService.FetchAsync();
+                if (!fetchResult.Success) {
+                    results.Add((targetBranch, false, $"Failed to fetch: {fetchResult.Error}"));
+                    continue;
+                }
+
+                // Check if branch already exists
+                if (await gitService.BranchExistsAsync(cherryPickBranch)) {
+                    var overwrite = XtraMessageBox.Show(
+                        $"Branch '{cherryPickBranch}' already exists.\n\nDo you want to delete it and create a new one?",
+                        "Branch Exists",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question);
+
+                    if (overwrite == DialogResult.Yes) {
+                        await gitService.DeleteBranchAsync(cherryPickBranch, force: true);
+                    }
+                    else {
+                        results.Add((targetBranch, false, "Branch already exists - skipped"));
+                        continue;
+                    }
+                }
+
+                // Create new branch from current HEAD (worktree is already on target branch)
+                var createResult = await gitService.CreateBranchAsync(cherryPickBranch, "HEAD");
+                if (!createResult.Success) {
+                    results.Add((targetBranch, false, $"Failed to create branch: {createResult.Error}"));
+                    continue;
+                }
+
+                // Cherry-pick all commits
+                var allCommitsSucceeded = true;
+                foreach (var commit in commits) {
+                    var cpResult = await gitService.CherryPickAsync(commit.Sha);
+                    if (!cpResult.Success) {
+                        if (cpResult.HasConflict) {
+                            await gitService.AbortCherryPickAsync();
+                            results.Add((targetBranch, false, $"Conflict on commit {commit.ShortSha}. Manual resolution required."));
+                        }
+                        else {
+                            results.Add((targetBranch, false, $"Cherry-pick failed: {cpResult.Error}"));
+                        }
+                        allCommitsSucceeded = false;
+                        break;
+                    }
+                }
+
+                if (!allCommitsSucceeded) {
+                    // Switch back to target branch on failure
+                    await gitService.CheckoutAsync(targetBranch);
+                    continue;
+                }
+
+                // Push to origin
+                var pushResult = await gitService.PushAsync(cherryPickBranch);
+                if (!pushResult.Success) {
+                    results.Add((targetBranch, false, $"Failed to push: {pushResult.Error}"));
+                    // Switch back to target branch
+                    await gitService.CheckoutAsync(targetBranch);
+                    continue;
+                }
+
+                // Switch back to target branch after successful push
+                await gitService.CheckoutAsync(targetBranch);
+
+                results.Add((targetBranch, true, null));
+            }
+            catch (Exception ex) {
+                results.Add((targetBranch, false, ex.Message));
+                // Try to switch back to target branch
+                try { await gitService.CheckoutAsync(targetBranch); } catch { }
+            }
+        }
+
+        // Show results
+        ShowCherryPickResults(pr, results);
+    }
+
+    private void ShowCherryPickResults(PullRequest pr, List<(string Branch, bool Success, string? Error)> results) {
+        var successCount = results.Count(r => r.Success);
+        var failureCount = results.Count(r => !r.Success);
+
+        var message = $"Cherry-pick completed.\n\nSuccessful: {successCount}\nFailed: {failureCount}";
+
+        if (failureCount > 0) {
+            message += "\n\nFailures:";
+            foreach (var (branch, success, error) in results.Where(r => !r.Success)) {
+                message += $"\n• {branch}: {error}";
+            }
+        }
+
+        if (successCount > 0) {
+            message += "\n\nSuccessfully created branches:";
+            foreach (var (branch, success, _) in results.Where(r => r.Success)) {
+                message += $"\n• cherry-pick/#{pr.Number}-to-{branch}";
+            }
+        }
+
+        var icon = failureCount == 0 ? MessageBoxIcon.Information :
+                   successCount == 0 ? MessageBoxIcon.Error :
+                   MessageBoxIcon.Warning;
+
+        XtraMessageBox.Show(message, "Cherry Pick Results", MessageBoxButtons.OK, icon);
+        labelStatus.Text = $"Cherry-pick: {successCount} succeeded, {failureCount} failed";
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e) {

@@ -27,6 +27,14 @@ namespace DXCP.WinForms
         ///  the contents of this method with the code editor.
         /// </summary>
         private void InitializeComponent() {
+            components = new System.ComponentModel.Container();
+            barManager = new DevExpress.XtraBars.BarManager(components);
+            barDockControlTop = new DevExpress.XtraBars.BarDockControl();
+            barDockControlBottom = new DevExpress.XtraBars.BarDockControl();
+            barDockControlLeft = new DevExpress.XtraBars.BarDockControl();
+            barDockControlRight = new DevExpress.XtraBars.BarDockControl();
+            barButtonCherryPick = new DevExpress.XtraBars.BarButtonItem();
+            popupMenuGrid = new DevExpress.XtraBars.PopupMenu(components);
             gridControl = new DevExpress.XtraGrid.GridControl();
             gridView = new DevExpress.XtraGrid.Views.Grid.GridView();
             colNumber = new DevExpress.XtraGrid.Columns.GridColumn();
@@ -41,10 +49,69 @@ namespace DXCP.WinForms
             colDeletions = new DevExpress.XtraGrid.Columns.GridColumn();
             btnRefresh = new DevExpress.XtraEditors.SimpleButton();
             labelStatus = new DevExpress.XtraEditors.LabelControl();
+            ((System.ComponentModel.ISupportInitialize)barManager).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)popupMenuGrid).BeginInit();
             ((System.ComponentModel.ISupportInitialize)gridControl).BeginInit();
             ((System.ComponentModel.ISupportInitialize)gridView).BeginInit();
             SuspendLayout();
-            // 
+            //
+            // barManager
+            //
+            barManager.DockControls.Add(barDockControlTop);
+            barManager.DockControls.Add(barDockControlBottom);
+            barManager.DockControls.Add(barDockControlLeft);
+            barManager.DockControls.Add(barDockControlRight);
+            barManager.Form = this;
+            barManager.Items.AddRange(new DevExpress.XtraBars.BarItem[] { barButtonCherryPick });
+            barManager.MaxItemId = 1;
+            //
+            // barButtonCherryPick
+            //
+            barButtonCherryPick.Caption = "Cherry Pick";
+            barButtonCherryPick.Id = 0;
+            barButtonCherryPick.Name = "barButtonCherryPick";
+            barButtonCherryPick.ItemClick += barButtonCherryPick_ItemClick;
+            //
+            // popupMenuGrid
+            //
+            popupMenuGrid.LinksPersistInfo.AddRange(new DevExpress.XtraBars.LinkPersistInfo[] {
+                new DevExpress.XtraBars.LinkPersistInfo(barButtonCherryPick)
+            });
+            popupMenuGrid.Manager = barManager;
+            popupMenuGrid.Name = "popupMenuGrid";
+            //
+            // barDockControlTop
+            //
+            barDockControlTop.CausesValidation = false;
+            barDockControlTop.Dock = DockStyle.Top;
+            barDockControlTop.Location = new Point(0, 0);
+            barDockControlTop.Manager = barManager;
+            barDockControlTop.Size = new Size(984, 0);
+            //
+            // barDockControlBottom
+            //
+            barDockControlBottom.CausesValidation = false;
+            barDockControlBottom.Dock = DockStyle.Bottom;
+            barDockControlBottom.Location = new Point(0, 526);
+            barDockControlBottom.Manager = barManager;
+            barDockControlBottom.Size = new Size(984, 0);
+            //
+            // barDockControlLeft
+            //
+            barDockControlLeft.CausesValidation = false;
+            barDockControlLeft.Dock = DockStyle.Left;
+            barDockControlLeft.Location = new Point(0, 0);
+            barDockControlLeft.Manager = barManager;
+            barDockControlLeft.Size = new Size(0, 526);
+            //
+            // barDockControlRight
+            //
+            barDockControlRight.CausesValidation = false;
+            barDockControlRight.Dock = DockStyle.Right;
+            barDockControlRight.Location = new Point(984, 0);
+            barDockControlRight.Manager = barManager;
+            barDockControlRight.Size = new Size(0, 526);
+            //
             // gridControl
             // 
             gridControl.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
@@ -183,9 +250,15 @@ namespace DXCP.WinForms
             Controls.Add(labelStatus);
             Controls.Add(btnRefresh);
             Controls.Add(gridControl);
+            Controls.Add(barDockControlLeft);
+            Controls.Add(barDockControlRight);
+            Controls.Add(barDockControlBottom);
+            Controls.Add(barDockControlTop);
             Name = "Form1";
             Text = "My Pull Requests";
             Load += Form1_Load;
+            ((System.ComponentModel.ISupportInitialize)barManager).EndInit();
+            ((System.ComponentModel.ISupportInitialize)popupMenuGrid).EndInit();
             ((System.ComponentModel.ISupportInitialize)gridControl).EndInit();
             ((System.ComponentModel.ISupportInitialize)gridView).EndInit();
             ResumeLayout(false);
@@ -208,5 +281,12 @@ namespace DXCP.WinForms
         private DevExpress.XtraGrid.Columns.GridColumn colDeletions;
         private DevExpress.XtraEditors.SimpleButton btnRefresh;
         private DevExpress.XtraEditors.LabelControl labelStatus;
+        private DevExpress.XtraBars.BarManager barManager;
+        private DevExpress.XtraBars.BarDockControl barDockControlTop;
+        private DevExpress.XtraBars.BarDockControl barDockControlBottom;
+        private DevExpress.XtraBars.BarDockControl barDockControlLeft;
+        private DevExpress.XtraBars.BarDockControl barDockControlRight;
+        private DevExpress.XtraBars.BarButtonItem barButtonCherryPick;
+        private DevExpress.XtraBars.PopupMenu popupMenuGrid;
     }
 }
