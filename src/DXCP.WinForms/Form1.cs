@@ -32,11 +32,24 @@ public partial class Form1 : Form
         if (_gitHubService != null)
             return true;
 
+        // Try to use stored token first
+        var storedToken = CredentialManager.GetToken();
+        if (!string.IsNullOrWhiteSpace(storedToken))
+        {
+            if (await TryAuthenticateAsync(storedToken))
+                return true;
+
+            // Stored token is invalid, clear it
+            CredentialManager.DeleteToken();
+        }
+
+        // Prompt user for token
         var token = DevExpress.XtraEditors.XtraInputBox.Show(
             "Enter your GitHub Personal Access Token.\n\n" +
             "For SSO-protected repos (like DevExpress), you must:\n" +
             "1. Create a PAT at: GitHub > Settings > Developer settings > Personal access tokens\n" +
-            "2. Click 'Configure SSO' next to the token and authorize it for DevExpress",
+            "2. Click 'Configure SSO' next to the token and authorize it for DevExpress\n\n" +
+            "Your token will be stored securely in Windows Credential Manager.",
             "GitHub Authentication",
             string.Empty);
 
@@ -46,6 +59,18 @@ public partial class Form1 : Form
             return false;
         }
 
+        if (await TryAuthenticateAsync(token))
+        {
+            // Save valid token for future use
+            CredentialManager.SaveToken(token);
+            return true;
+        }
+
+        return false;
+    }
+
+    private async Task<bool> TryAuthenticateAsync(string token)
+    {
         try
         {
             labelStatus.Text = "Authenticating...";
