@@ -1,3 +1,5 @@
+using DevExpress.XtraEditors;
+
 namespace DXCP.WinForms
 {
     internal static class Program
@@ -11,6 +13,7 @@ namespace DXCP.WinForms
             // To customize application configuration such as set high DPI settings or default font,
             // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
+            WindowsFormsSettings.LoadApplicationSettings();
             Application.Run(new Form1());
         }
     }
