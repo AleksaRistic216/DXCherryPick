@@ -26,9 +26,7 @@ namespace DXCP.WinForms
         ///  Required method for Designer support - do not modify
         ///  the contents of this method with the code editor.
         /// </summary>
-        private void InitializeComponent()
-        {
-            components = new System.ComponentModel.Container();
+        private void InitializeComponent() {
             gridControl = new DevExpress.XtraGrid.GridControl();
             gridView = new DevExpress.XtraGrid.Views.Grid.GridView();
             colNumber = new DevExpress.XtraGrid.Columns.GridColumn();
@@ -46,151 +44,142 @@ namespace DXCP.WinForms
             ((System.ComponentModel.ISupportInitialize)gridControl).BeginInit();
             ((System.ComponentModel.ISupportInitialize)gridView).BeginInit();
             SuspendLayout();
-            //
+            // 
             // gridControl
-            //
+            // 
             gridControl.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            gridControl.Location = new Point(12, 50);
+            gridControl.Location = new Point(12, 47);
             gridControl.MainView = gridView;
             gridControl.Name = "gridControl";
-            gridControl.Size = new Size(960, 499);
+            gridControl.Size = new Size(960, 468);
             gridControl.TabIndex = 0;
             gridControl.ViewCollection.AddRange(new DevExpress.XtraGrid.Views.Base.BaseView[] { gridView });
-            //
+            // 
             // gridView
-            //
-            gridView.Columns.AddRange(new DevExpress.XtraGrid.Columns.GridColumn[] {
-                colNumber,
-                colTitle,
-                colState,
-                colRepository,
-                colCreatedAt,
-                colBaseBranch,
-                colHeadBranch,
-                colIsDraft,
-                colAdditions,
-                colDeletions
-            });
+            // 
+            gridView.Columns.AddRange(new DevExpress.XtraGrid.Columns.GridColumn[] { colNumber, colTitle, colState, colRepository, colCreatedAt, colBaseBranch, colHeadBranch, colIsDraft, colAdditions, colDeletions });
+            gridView.DetailHeight = 328;
             gridView.GridControl = gridControl;
             gridView.Name = "gridView";
             gridView.OptionsBehavior.Editable = false;
-            gridView.OptionsView.ShowGroupPanel = false;
-            gridView.OptionsView.ColumnAutoWidth = false;
             gridView.OptionsView.BestFitMode = DevExpress.XtraGrid.Views.Grid.GridBestFitMode.Fast;
-            //
+            gridView.OptionsView.ColumnAutoWidth = false;
+            gridView.OptionsView.ShowGroupPanel = false;
+            // 
             // colNumber
-            //
+            // 
             colNumber.Caption = "#";
             colNumber.FieldName = "Number";
             colNumber.Name = "colNumber";
             colNumber.Visible = true;
             colNumber.VisibleIndex = 0;
             colNumber.Width = 50;
-            //
+            // 
             // colTitle
-            //
+            // 
             colTitle.Caption = "Title";
             colTitle.FieldName = "Title";
             colTitle.Name = "colTitle";
             colTitle.Visible = true;
             colTitle.VisibleIndex = 1;
             colTitle.Width = 300;
-            //
+            // 
             // colState
-            //
+            // 
             colState.Caption = "State";
             colState.FieldName = "State";
             colState.Name = "colState";
             colState.Visible = true;
             colState.VisibleIndex = 2;
             colState.Width = 70;
-            //
+            // 
             // colRepository
-            //
+            // 
             colRepository.Caption = "Repository";
             colRepository.FieldName = "Repository";
             colRepository.Name = "colRepository";
             colRepository.Visible = true;
             colRepository.VisibleIndex = 3;
             colRepository.Width = 180;
-            //
+            // 
             // colCreatedAt
-            //
+            // 
             colCreatedAt.Caption = "Created";
+            colCreatedAt.DisplayFormat.FormatString = "g";
+            colCreatedAt.DisplayFormat.FormatType = DevExpress.Utils.FormatType.DateTime;
             colCreatedAt.FieldName = "CreatedAt";
             colCreatedAt.Name = "colCreatedAt";
             colCreatedAt.Visible = true;
             colCreatedAt.VisibleIndex = 4;
             colCreatedAt.Width = 120;
-            colCreatedAt.DisplayFormat.FormatType = DevExpress.Utils.FormatType.DateTime;
-            colCreatedAt.DisplayFormat.FormatString = "g";
-            //
+            // 
             // colBaseBranch
-            //
+            // 
             colBaseBranch.Caption = "Base Branch";
             colBaseBranch.FieldName = "BaseBranch";
             colBaseBranch.Name = "colBaseBranch";
             colBaseBranch.Visible = true;
             colBaseBranch.VisibleIndex = 5;
             colBaseBranch.Width = 100;
-            //
+            // 
             // colHeadBranch
-            //
+            // 
             colHeadBranch.Caption = "Head Branch";
             colHeadBranch.FieldName = "HeadBranch";
             colHeadBranch.Name = "colHeadBranch";
             colHeadBranch.Visible = true;
             colHeadBranch.VisibleIndex = 6;
             colHeadBranch.Width = 100;
-            //
+            // 
             // colIsDraft
-            //
+            // 
             colIsDraft.Caption = "Draft";
             colIsDraft.FieldName = "IsDraft";
             colIsDraft.Name = "colIsDraft";
             colIsDraft.Visible = true;
             colIsDraft.VisibleIndex = 7;
             colIsDraft.Width = 50;
-            //
+            // 
             // colAdditions
-            //
+            // 
             colAdditions.Caption = "+";
             colAdditions.FieldName = "Additions";
             colAdditions.Name = "colAdditions";
             colAdditions.Visible = true;
             colAdditions.VisibleIndex = 8;
             colAdditions.Width = 50;
-            //
+            // 
             // colDeletions
-            //
+            // 
             colDeletions.Caption = "-";
             colDeletions.FieldName = "Deletions";
             colDeletions.Name = "colDeletions";
             colDeletions.Visible = true;
             colDeletions.VisibleIndex = 9;
             colDeletions.Width = 50;
-            //
+            // 
             // btnRefresh
-            //
-            btnRefresh.Location = new Point(12, 12);
+            // 
+            btnRefresh.ImageOptions.SvgImage = Properties.Resources.changeview;
+            btnRefresh.Location = new Point(12, 11);
             btnRefresh.Name = "btnRefresh";
-            btnRefresh.Size = new Size(100, 28);
+            btnRefresh.Size = new Size(100, 26);
             btnRefresh.TabIndex = 1;
             btnRefresh.Text = "Refresh";
             btnRefresh.Click += btnRefresh_Click;
-            //
+            // 
             // labelStatus
-            //
-            labelStatus.Location = new Point(130, 18);
+            // 
+            labelStatus.Location = new Point(130, 17);
             labelStatus.Name = "labelStatus";
-            labelStatus.Size = new Size(0, 16);
+            labelStatus.Size = new Size(0, 13);
             labelStatus.TabIndex = 2;
-            //
+            // 
             // Form1
-            //
-            AutoScaleDimensions = new SizeF(7F, 16F);
+            // 
+            AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(984, 561);
+            ClientSize = new Size(984, 526);
             Controls.Add(labelStatus);
             Controls.Add(btnRefresh);
             Controls.Add(gridControl);
