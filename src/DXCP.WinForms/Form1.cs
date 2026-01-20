@@ -1,12 +1,15 @@
 using System.Diagnostics;
 using DevExpress.XtraBars;
 using DevExpress.XtraEditors;
+using DevExpress.XtraSplashScreen;
 
 namespace DXCP.WinForms;
 
 public partial class Form1 : Form {
     private GitHubService? _gitHubService;
     private readonly RepositoryConfigManager _repoConfigManager = new();
+    private IOverlaySplashScreenHandle? _overlayHandle;
+    private readonly OverlayTextPainter _overlayPainter = new();
 
     public Form1() {
         InitializeComponent();
@@ -74,7 +77,6 @@ public partial class Form1 : Form {
             string.Empty);
 
         if(string.IsNullOrWhiteSpace(token)) {
-            labelStatus.Text = "Authentication required";
             return false;
         }
 
@@ -89,10 +91,9 @@ public partial class Form1 : Form {
 
     private async Task<bool> TryAuthenticateAsync(string token) {
         try {
-            labelStatus.Text = "Authenticating...";
+            ShowOverlay(this, "Verifying GitHub credentials...");
             _gitHubService = new GitHubService(token);
-            var username = await _gitHubService.GetCurrentUsernameAsync();
-            labelStatus.Text = $"Authenticated as {username}";
+            await _gitHubService.GetCurrentUsernameAsync();
             return true;
         }
         catch(Exception ex) {
@@ -103,8 +104,10 @@ public partial class Form1 : Form {
             Debug.WriteLine($"Error: {ex.Message}");
             Debug.WriteLine($"Stack Trace: {ex.StackTrace}");
 
-            labelStatus.Text = "Authentication failed - see Output window";
             return false;
+        }
+        finally {
+            CloseOverlay();
         }
     }
 
@@ -113,24 +116,21 @@ public partial class Form1 : Form {
             return;
 
         btnRefresh.Enabled = false;
-        labelStatus.Text = "Loading pull requests...";
+        ShowOverlay(gridControl, "Fetching your pull requests from DevExpress...");
 
         try {
-            var username = await _gitHubService.GetCurrentUsernameAsync();
             var pullRequests = await _gitHubService.GetMyPullRequestsAsync();
             gridControl.DataSource = pullRequests;
             gridView.BestFitColumns();
             ApplyDefaultFilter();
-            labelStatus.Text = $"Loaded {pullRequests.Count} pull requests for {username} in DevExpress";
         }
         catch(Exception ex) {
             Debug.WriteLine("=== LOAD PR ERROR ===");
             Debug.WriteLine($"Error: {ex.Message}");
             Debug.WriteLine($"Stack Trace: {ex.StackTrace}");
-
-            labelStatus.Text = "Error loading pull requests - see Output window";
         }
         finally {
+            CloseOverlay();
             btnRefresh.Enabled = true;
         }
     }
@@ -160,18 +160,17 @@ public partial class Form1 : Form {
             if (string.IsNullOrEmpty(worktreeParent))
                 return;
 
-            labelStatus.Text = "Loading PR commits and branches...";
-            Application.DoEvents();
+            ShowOverlay(gridControl, "Loading commits and target branches...");
 
             // Get PR commits
             var commits = await _gitHubService.GetPullRequestCommitsAsync(pr.Repository, pr.Number);
             if (commits.Count == 0) {
+                CloseOverlay();
                 XtraMessageBox.Show(
                     "No commits found for this pull request.",
                     "No Commits",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
-                labelStatus.Text = "Ready";
                 return;
             }
 
@@ -182,16 +181,16 @@ public partial class Form1 : Form {
                 .ToList();
 
             if (targetBranches.Count == 0) {
+                CloseOverlay();
                 XtraMessageBox.Show(
                     "No target branches found for cherry-picking.\n\nThe repository needs versioned branches (e.g., 2025.2, 2025.1).",
                     "No Target Branches",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
-                labelStatus.Text = "Ready";
                 return;
             }
 
-            labelStatus.Text = "Ready";
+            CloseOverlay();
 
             // Show cherry-pick dialog
             using var dialog = new CherryPickDialog(pr, commits, targetBranches);
@@ -206,13 +205,13 @@ public partial class Form1 : Form {
             await ExecuteCherryPicksAsync(pr, commits, selectedBranches, worktreeParent);
         }
         catch (Exception ex) {
+            CloseOverlay();
             Debug.WriteLine($"Cherry-pick error: {ex}");
             XtraMessageBox.Show(
                 $"An error occurred during cherry-pick:\n\n{ex.Message}",
                 "Cherry Pick Error",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
-            labelStatus.Text = "Cherry-pick failed";
         }
     }
 
@@ -239,8 +238,7 @@ public partial class Form1 : Form {
         var results = new List<(string Branch, bool Success, string? Error)>();
 
         foreach (var targetBranch in targetBranches) {
-            labelStatus.Text = $"Cherry-picking to {targetBranch}...";
-            Application.DoEvents();
+            ShowOverlay(gridControl, $"Applying commits to {targetBranch}...");
 
             // Get worktree path for this branch
             var worktreePath = Path.Combine(worktreeParent, targetBranch);
@@ -342,6 +340,8 @@ public partial class Form1 : Form {
             }
         }
 
+        CloseOverlay();
+
         // Show results
         ShowCherryPickResults(pr, results);
     }
@@ -371,10 +371,23 @@ public partial class Form1 : Form {
                    MessageBoxIcon.Warning;
 
         XtraMessageBox.Show(message, "Cherry Pick Results", MessageBoxButtons.OK, icon);
-        labelStatus.Text = $"Cherry-pick: {successCount} succeeded, {failureCount} failed";
+    }
+
+    private void ShowOverlay(Control owner, string message) {
+        CloseOverlay();
+        _overlayPainter.Text = message;
+        _overlayHandle = SplashScreenManager.ShowOverlayForm(owner, customPainter: _overlayPainter);
+    }
+
+    private void CloseOverlay() {
+        if (_overlayHandle != null) {
+            SplashScreenManager.CloseOverlayForm(_overlayHandle);
+            _overlayHandle = null;
+        }
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e) {
+        CloseOverlay();
         _gitHubService?.Dispose();
         base.OnFormClosed(e);
     }

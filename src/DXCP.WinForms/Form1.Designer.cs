@@ -48,7 +48,6 @@ namespace DXCP.WinForms
             colAdditions = new DevExpress.XtraGrid.Columns.GridColumn();
             colDeletions = new DevExpress.XtraGrid.Columns.GridColumn();
             btnRefresh = new DevExpress.XtraEditors.SimpleButton();
-            labelStatus = new DevExpress.XtraEditors.LabelControl();
             ((System.ComponentModel.ISupportInitialize)barManager).BeginInit();
             ((System.ComponentModel.ISupportInitialize)popupMenuGrid).BeginInit();
             ((System.ComponentModel.ISupportInitialize)gridControl).BeginInit();
@@ -234,20 +233,12 @@ namespace DXCP.WinForms
             btnRefresh.TabIndex = 1;
             btnRefresh.Text = "Refresh";
             btnRefresh.Click += btnRefresh_Click;
-            // 
-            // labelStatus
-            // 
-            labelStatus.Location = new Point(130, 17);
-            labelStatus.Name = "labelStatus";
-            labelStatus.Size = new Size(0, 13);
-            labelStatus.TabIndex = 2;
-            // 
+            //
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(984, 526);
-            Controls.Add(labelStatus);
             Controls.Add(btnRefresh);
             Controls.Add(gridControl);
             Controls.Add(barDockControlLeft);
@@ -280,7 +271,6 @@ namespace DXCP.WinForms
         private DevExpress.XtraGrid.Columns.GridColumn colAdditions;
         private DevExpress.XtraGrid.Columns.GridColumn colDeletions;
         private DevExpress.XtraEditors.SimpleButton btnRefresh;
-        private DevExpress.XtraEditors.LabelControl labelStatus;
         private DevExpress.XtraBars.BarManager barManager;
         private DevExpress.XtraBars.BarDockControl barDockControlTop;
         private DevExpress.XtraBars.BarDockControl barDockControlBottom;
