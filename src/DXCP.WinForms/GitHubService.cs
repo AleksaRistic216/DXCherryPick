@@ -55,11 +55,12 @@ public class GitHubService : IDisposable
 
         if (searchResult?.Items != null)
         {
-            foreach (var item in searchResult.Items)
+            var detailsTasks = searchResult.Items.Select(async item =>
             {
                 var repoFullName = ExtractRepoFromUrl(item.RepositoryUrl);
+                var details = await GetPullRequestDetailsAsync(repoFullName, item.Number);
 
-                pullRequests.Add(new PullRequest
+                return new PullRequest
                 {
                     Number = item.Number,
                     Title = item.Title ?? string.Empty,
@@ -68,13 +69,15 @@ public class GitHubService : IDisposable
                     CreatedAt = item.CreatedAt,
                     UpdatedAt = item.UpdatedAt,
                     Url = item.HtmlUrl ?? string.Empty,
-                    BaseBranch = string.Empty,
-                    HeadBranch = string.Empty,
+                    BaseBranch = details?.Base?.Ref ?? string.Empty,
+                    HeadBranch = details?.Head?.Ref ?? string.Empty,
                     IsDraft = item.Draft,
-                    Additions = 0,
-                    Deletions = 0
-                });
-            }
+                    Additions = details?.Additions ?? 0,
+                    Deletions = details?.Deletions ?? 0
+                };
+            });
+
+            pullRequests.AddRange(await Task.WhenAll(detailsTasks));
         }
 
         return pullRequests;
@@ -90,6 +93,16 @@ public class GitHubService : IDisposable
             return $"{parts[^2]}/{parts[^1]}";
 
         return repositoryUrl;
+    }
+
+    private async Task<GitHubPullRequestDetails?> GetPullRequestDetailsAsync(string repoFullName, int prNumber)
+    {
+        var response = await _httpClient.GetAsync($"repos/{repoFullName}/pulls/{prNumber}");
+        if (!response.IsSuccessStatusCode)
+            return null;
+
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<GitHubPullRequestDetails>(json, JsonOptions);
     }
 
     private static JsonSerializerOptions JsonOptions => new()
@@ -128,5 +141,25 @@ public class GitHubService : IDisposable
         [JsonPropertyName("updated_at")]
         public DateTime? UpdatedAt { get; set; }
         public bool Draft { get; set; }
+        [JsonPropertyName("pull_request")]
+        public GitHubPullRequestRef? PullRequest { get; set; }
+    }
+
+    private class GitHubPullRequestRef
+    {
+        public string? Url { get; set; }
+    }
+
+    private class GitHubPullRequestDetails
+    {
+        public GitHubBranchRef? Head { get; set; }
+        public GitHubBranchRef? Base { get; set; }
+        public int Additions { get; set; }
+        public int Deletions { get; set; }
+    }
+
+    private class GitHubBranchRef
+    {
+        public string? Ref { get; set; }
     }
 }
