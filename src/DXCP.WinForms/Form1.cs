@@ -13,6 +13,7 @@ public partial class Form1 : Form {
 
     public Form1() {
         InitializeComponent();
+        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         SetupContextMenu();
     }
 
