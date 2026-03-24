@@ -159,6 +159,31 @@ public class GitHubService : IDisposable
             .ToList();
     }
 
+    public async Task<string?> CreatePullRequestAsync(string repoFullName, string title, string body, string head, string baseBranch)
+    {
+        var payload = new
+        {
+            title,
+            body,
+            head,
+            @base = baseBranch
+        };
+
+        var json = JsonSerializer.Serialize(payload);
+        var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+        var response = await _httpClient.PostAsync($"repos/{repoFullName}/pulls", content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorJson = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Failed to create PR ({response.StatusCode}): {errorJson}");
+        }
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        var pr = JsonSerializer.Deserialize<GitHubCreatedPr>(responseJson, JsonOptions);
+        return pr?.HtmlUrl;
+    }
+
     private static string ExtractRepoFromUrl(string? repositoryUrl)
     {
         if (string.IsNullOrEmpty(repositoryUrl))
@@ -267,5 +292,11 @@ public class GitHubService : IDisposable
     private class GitHubBranch
     {
         public string? Name { get; set; }
+    }
+
+    private class GitHubCreatedPr
+    {
+        [JsonPropertyName("html_url")]
+        public string? HtmlUrl { get; set; }
     }
 }
