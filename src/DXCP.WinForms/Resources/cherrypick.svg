@@ -1,0 +1,20 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<svg x="0px" y="0px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" id="Layer_1" style="enable-background:new 0 0 32 32">
+  <style type="text/css">
+	.Yellow{fill:#FFB115;}
+	.Red{fill:#D11C1C;}
+	.Blue{fill:#1177D7;}
+	.Green{fill:#039C23;}
+	.Black{fill:#727272;}
+	.White{fill:#FFFFFF;}
+  </style>
+  <g id="CherryPick">
+    <path d="M12,17 C12,12 14,8 16,6" fill="none" stroke="#039C23" stroke-width="2" stroke-linecap="round"/>
+    <path d="M20,16 C20,11 18,8 16,6" fill="none" stroke="#039C23" stroke-width="2" stroke-linecap="round"/>
+    <path d="M16,6 C18,3 22,2 24,3 C22,4.5 19,5.5 17,7.5Z" class="Green"/>
+    <circle cx="11" cy="22" r="6" class="Red"/>
+    <circle cx="21" cy="21" r="5.5" class="Red"/>
+    <ellipse cx="9" cy="20" rx="1.8" ry="1.2" fill="#FFFFFF" opacity="0.3" transform="rotate(-20 9 20)"/>
+    <ellipse cx="19.5" cy="19" rx="1.5" ry="1" fill="#FFFFFF" opacity="0.3" transform="rotate(-20 19.5 19)"/>
+  </g>
+</svg>

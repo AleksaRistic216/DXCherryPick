@@ -7,6 +7,8 @@ public class GitService
 {
     private readonly string _workingDirectory;
 
+    public string WorkingDirectory => _workingDirectory;
+
     public GitService(string workingDirectory)
     {
         _workingDirectory = workingDirectory;
@@ -46,14 +48,46 @@ public class GitService
         return new CherryPickResult { Success = false, HasConflict = false, Error = result.Error };
     }
 
-    public async Task<GitResult> PushAsync(string branchName, string remote = "origin")
+    public async Task<GitResult> PushAsync(string branchName, bool force = false, string remote = "origin")
     {
-        return await RunGitAsync($"push -u {remote} {branchName}");
+        var forceFlag = force ? " --force" : "";
+        return await RunGitAsync($"push -u{forceFlag} {remote} {branchName}");
     }
 
     public async Task<GitResult> AbortCherryPickAsync()
     {
         return await RunGitAsync("cherry-pick --abort");
+    }
+
+    public async Task<GitResult> ResetHardAsync()
+    {
+        return await RunGitAsync("reset --hard HEAD");
+    }
+
+    public async Task<GitResult> ResetHardToAsync(string target)
+    {
+        return await RunGitAsync($"reset --hard {target}");
+    }
+
+    public async Task<List<string>> GetConflictedFilesAsync()
+    {
+        var result = await RunGitAsync("diff --name-only --diff-filter=U");
+        if (!result.Success || string.IsNullOrWhiteSpace(result.Output))
+            return new List<string>();
+
+        return result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(f => f.Trim())
+            .ToList();
+    }
+
+    public async Task<GitResult> StageFileAsync(string filePath)
+    {
+        return await RunGitAsync($"add \"{filePath}\"");
+    }
+
+    public async Task<GitResult> ContinueCherryPickAsync()
+    {
+        return await RunGitAsync("cherry-pick --continue --no-edit");
     }
 
     public async Task<bool> HasUncommittedChangesAsync()

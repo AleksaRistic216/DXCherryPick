@@ -9,10 +9,12 @@ public class CherryPickDialog : XtraForm
     private ListBoxControl listBoxCommits = null!;
     private LabelControl labelBranchesHeader = null!;
     private CheckedListBoxControl checkedListBoxBranches = null!;
+    private CheckEdit checkForcePush = null!;
     private SimpleButton btnOk = null!;
     private SimpleButton btnCancel = null!;
 
     public List<string> SelectedBranches { get; private set; } = new();
+    public bool ForcePush { get; private set; }
 
     public CherryPickDialog(PullRequest pr, List<CommitInfo> commits, List<string> targetBranches)
     {
@@ -23,7 +25,7 @@ public class CherryPickDialog : XtraForm
     private void InitializeComponent()
     {
         Text = "Cherry Pick";
-        Size = new System.Drawing.Size(500, 450);
+        Size = new System.Drawing.Size(500, 480);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -62,10 +64,17 @@ public class CherryPickDialog : XtraForm
             CheckOnClick = true
         };
 
+        checkForcePush = new CheckEdit
+        {
+            Text = "Force push (cherry-pick branch, useful if it already exists from previous failed attempt)",
+            Location = new System.Drawing.Point(12, 360),
+            Size = new System.Drawing.Size(460, 20)
+        };
+
         btnOk = new SimpleButton
         {
             Text = "Cherry Pick",
-            Location = new System.Drawing.Point(290, 370),
+            Location = new System.Drawing.Point(290, 400),
             Size = new System.Drawing.Size(90, 30),
             DialogResult = DialogResult.OK
         };
@@ -74,7 +83,7 @@ public class CherryPickDialog : XtraForm
         btnCancel = new SimpleButton
         {
             Text = "Cancel",
-            Location = new System.Drawing.Point(385, 370),
+            Location = new System.Drawing.Point(385, 400),
             Size = new System.Drawing.Size(90, 30),
             DialogResult = DialogResult.Cancel
         };
@@ -86,6 +95,7 @@ public class CherryPickDialog : XtraForm
             listBoxCommits,
             labelBranchesHeader,
             checkedListBoxBranches,
+            checkForcePush,
             btnOk,
             btnCancel
         });
@@ -129,6 +139,9 @@ public class CherryPickDialog : XtraForm
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
             DialogResult = DialogResult.None;
+            return;
         }
+
+        ForcePush = checkForcePush.Checked;
     }
 }

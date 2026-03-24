@@ -121,4 +121,7 @@
   <data name="changeview" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\changeview.svg;DevExpress.Utils.Svg.SvgImage, DevExpress.Data.v26.1, Version=26.1.0.0, Culture=neutral, PublicKeyToken=79868b8147b5eae4</value>
   </data>
+  <data name="cherrypick" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\cherrypick.svg;DevExpress.Utils.Svg.SvgImage, DevExpress.Data.v26.1, Version=26.1.0.0, Culture=neutral, PublicKeyToken=79868b8147b5eae4</value>
+  </data>
 </root>

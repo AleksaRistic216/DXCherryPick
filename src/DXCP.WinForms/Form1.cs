@@ -13,6 +13,7 @@ public partial class Form1 : Form {
 
     public Form1() {
         InitializeComponent();
+        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         SetupContextMenu();
     }
 
@@ -202,7 +203,7 @@ public partial class Form1 : Form {
                 return;
 
             // Perform cherry-pick for each selected branch using worktrees
-            await ExecuteCherryPicksAsync(pr, commits, selectedBranches, worktreeParent);
+            await ExecuteCherryPicksAsync(pr, commits, selectedBranches, worktreeParent, dialog.ForcePush);
         }
         catch (Exception ex) {
             CloseOverlay();
@@ -234,7 +235,7 @@ public partial class Form1 : Form {
         return selectedPath;
     }
 
-    private async Task ExecuteCherryPicksAsync(PullRequest pr, List<CommitInfo> commits, List<string> targetBranches, string worktreeParent) {
+    private async Task ExecuteCherryPicksAsync(PullRequest pr, List<CommitInfo> commits, List<string> targetBranches, string worktreeParent, bool forcePush) {
         var results = new List<(string Branch, bool Success, string? Error)>();
 
         foreach (var targetBranch in targetBranches) {
@@ -258,8 +259,21 @@ public partial class Form1 : Form {
 
             // Check for uncommitted changes in this worktree
             if (await gitService.HasUncommittedChangesAsync()) {
-                results.Add((targetBranch, false, $"Uncommitted changes in worktree. Please commit or stash first."));
-                continue;
+                CloseOverlay();
+                var choice = XtraMessageBox.Show(
+                    $"Worktree '{targetBranch}' has uncommitted changes.\n\nDiscard them and continue?",
+                    "Uncommitted Changes",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (choice == DialogResult.Yes) {
+                    await gitService.ResetHardAsync();
+                    ShowOverlay(gridControl, $"Applying commits to {targetBranch}...");
+                }
+                else {
+                    results.Add((targetBranch, false, "Skipped — uncommitted changes in worktree."));
+                    continue;
+                }
             }
 
             var cherryPickBranch = $"cherry-pick/#{pr.Number}-to-{targetBranch}";
@@ -271,6 +285,10 @@ public partial class Form1 : Form {
                     results.Add((targetBranch, false, $"Failed to fetch: {fetchResult.Error}"));
                     continue;
                 }
+
+                // Reset to latest remote state
+                await gitService.CheckoutAsync(targetBranch);
+                await gitService.ResetHardToAsync($"origin/{targetBranch}");
 
                 // Check if branch already exists
                 if (await gitService.BranchExistsAsync(cherryPickBranch)) {
@@ -302,8 +320,20 @@ public partial class Form1 : Form {
                     var cpResult = await gitService.CherryPickAsync(commit.Sha);
                     if (!cpResult.Success) {
                         if (cpResult.HasConflict) {
-                            await gitService.AbortCherryPickAsync();
-                            results.Add((targetBranch, false, $"Conflict on commit {commit.ShortSha}. Manual resolution required."));
+                            CloseOverlay();
+                            var conflictedFiles = await gitService.GetConflictedFilesAsync();
+                            if (conflictedFiles.Count > 0) {
+                                using var conflictDialog = new ConflictResolutionDialog(gitService, conflictedFiles, commit, targetBranch);
+                                conflictDialog.ShowDialog(this);
+                                if (conflictDialog.Resolved) {
+                                    ShowOverlay(gridControl, $"Applying commits to {targetBranch}...");
+                                    continue; // conflict resolved, move to next commit
+                                }
+                            }
+                            else {
+                                await gitService.AbortCherryPickAsync();
+                            }
+                            results.Add((targetBranch, false, $"Conflict on commit {commit.ShortSha}. Aborted by user."));
                         }
                         else {
                             results.Add((targetBranch, false, $"Cherry-pick failed: {cpResult.Error}"));
@@ -320,7 +350,7 @@ public partial class Form1 : Form {
                 }
 
                 // Push to origin
-                var pushResult = await gitService.PushAsync(cherryPickBranch);
+                var pushResult = await gitService.PushAsync(cherryPickBranch, force: forcePush);
                 if (!pushResult.Success) {
                     results.Add((targetBranch, false, $"Failed to push: {pushResult.Error}"));
                     // Switch back to target branch
@@ -328,10 +358,21 @@ public partial class Form1 : Form {
                     continue;
                 }
 
+                // Create pull request
+                ShowOverlay(gridControl, $"Creating PR for {targetBranch}...");
+                try {
+                    var prTitle = $"CP: {pr.Title}";
+                    var prBody = $"Cherry pick #{pr.Number} to {targetBranch}";
+                    var prUrl = await _gitHubService!.CreatePullRequestAsync(
+                        pr.Repository, prTitle, prBody, cherryPickBranch, targetBranch);
+                    results.Add((targetBranch, true, prUrl));
+                }
+                catch (Exception prEx) {
+                    results.Add((targetBranch, true, $"Pushed but PR creation failed: {prEx.Message}"));
+                }
+
                 // Switch back to target branch after successful push
                 await gitService.CheckoutAsync(targetBranch);
-
-                results.Add((targetBranch, true, null));
             }
             catch (Exception ex) {
                 results.Add((targetBranch, false, ex.Message));
@@ -360,9 +401,9 @@ public partial class Form1 : Form {
         }
 
         if (successCount > 0) {
-            message += "\n\nSuccessfully created branches:";
-            foreach (var (branch, success, _) in results.Where(r => r.Success)) {
-                message += $"\n• cherry-pick/#{pr.Number}-to-{branch}";
+            message += "\n\nSuccessful:";
+            foreach (var (branch, success, info) in results.Where(r => r.Success)) {
+                message += $"\n• {branch}: {info}";
             }
         }
 

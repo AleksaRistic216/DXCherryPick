@@ -246,7 +246,7 @@ namespace DXCP.WinForms
             Controls.Add(barDockControlBottom);
             Controls.Add(barDockControlTop);
             Name = "Form1";
-            Text = "My Pull Requests";
+            Text = "DX Cherry Pick";
             Load += Form1_Load;
             ((System.ComponentModel.ISupportInitialize)barManager).EndInit();
             ((System.ComponentModel.ISupportInitialize)popupMenuGrid).EndInit();
