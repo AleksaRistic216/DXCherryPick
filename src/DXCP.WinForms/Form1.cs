@@ -19,6 +19,19 @@ public partial class Form1 : Form {
 
     private void SetupContextMenu() {
         gridView.MouseUp += GridView_MouseUp;
+        gridView.RowCellStyle += GridView_RowCellStyle;
+    }
+
+    private void GridView_RowCellStyle(object sender, DevExpress.XtraGrid.Views.Grid.RowCellStyleEventArgs e) {
+        var pr = gridView.GetRow(e.RowHandle) as PullRequest;
+        if (pr == null) return;
+
+        e.Appearance.BackColor = pr.State.ToLowerInvariant() switch {
+            "open"   => Color.FromArgb(220, 242, 220),
+            "closed" => Color.FromArgb(242, 220, 220),
+            "merged" => Color.FromArgb(220, 220, 242),
+            _        => Color.Empty
+        };
     }
 
     private void GridView_MouseUp(object? sender, MouseEventArgs e) {
@@ -123,6 +136,7 @@ public partial class Form1 : Form {
             var pullRequests = await _gitHubService.GetMyPullRequestsAsync();
             gridControl.DataSource = pullRequests;
             gridView.BestFitColumns();
+            colTitle.Width = 300;
             ApplyDefaultFilter();
         }
         catch(Exception ex) {
@@ -138,7 +152,9 @@ public partial class Form1 : Form {
 
     private void ApplyDefaultFilter() {
         var twoWeeksAgo = DateTime.Now.AddDays(-14).ToString("MM/dd/yyyy");
-        gridView.ActiveFilterString = $"Contains([Repository], 'dxvcs') AND [CreatedAt] >= #{twoWeeksAgo}#";
+        gridView.ActiveFilterString = $"Contains([Repository], 'dxvcs') AND [UpdatedAt] >= #{twoWeeksAgo}#";
+        gridView.ClearSorting();
+        gridView.SortInfo.Add(new DevExpress.XtraGrid.Columns.GridColumnSortInfo(colUpdatedAt, DevExpress.Data.ColumnSortOrder.Descending));
     }
 
     private async Task PerformCherryPickAsync(PullRequest pr) {

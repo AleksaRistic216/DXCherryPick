@@ -47,6 +47,7 @@ namespace DXCP.WinForms
             colIsDraft = new DevExpress.XtraGrid.Columns.GridColumn();
             colAdditions = new DevExpress.XtraGrid.Columns.GridColumn();
             colDeletions = new DevExpress.XtraGrid.Columns.GridColumn();
+            colUpdatedAt = new DevExpress.XtraGrid.Columns.GridColumn();
             btnRefresh = new DevExpress.XtraEditors.SimpleButton();
             ((System.ComponentModel.ISupportInitialize)barManager).BeginInit();
             ((System.ComponentModel.ISupportInitialize)popupMenuGrid).BeginInit();
@@ -123,7 +124,7 @@ namespace DXCP.WinForms
             // 
             // gridView
             // 
-            gridView.Columns.AddRange(new DevExpress.XtraGrid.Columns.GridColumn[] { colNumber, colTitle, colState, colRepository, colCreatedAt, colBaseBranch, colHeadBranch, colIsDraft, colAdditions, colDeletions });
+            gridView.Columns.AddRange(new DevExpress.XtraGrid.Columns.GridColumn[] { colNumber, colTitle, colState, colRepository, colCreatedAt, colUpdatedAt, colBaseBranch, colHeadBranch, colIsDraft, colAdditions, colDeletions });
             gridView.DetailHeight = 328;
             gridView.GridControl = gridControl;
             gridView.Name = "gridView";
@@ -178,14 +179,25 @@ namespace DXCP.WinForms
             colCreatedAt.Visible = true;
             colCreatedAt.VisibleIndex = 4;
             colCreatedAt.Width = 120;
-            // 
+            //
+            // colUpdatedAt
+            //
+            colUpdatedAt.Caption = "Updated";
+            colUpdatedAt.DisplayFormat.FormatString = "g";
+            colUpdatedAt.DisplayFormat.FormatType = DevExpress.Utils.FormatType.DateTime;
+            colUpdatedAt.FieldName = "UpdatedAt";
+            colUpdatedAt.Name = "colUpdatedAt";
+            colUpdatedAt.Visible = true;
+            colUpdatedAt.VisibleIndex = 5;
+            colUpdatedAt.Width = 120;
+            //
             // colBaseBranch
             // 
             colBaseBranch.Caption = "Base Branch";
             colBaseBranch.FieldName = "BaseBranch";
             colBaseBranch.Name = "colBaseBranch";
             colBaseBranch.Visible = true;
-            colBaseBranch.VisibleIndex = 5;
+            colBaseBranch.VisibleIndex = 6;
             colBaseBranch.Width = 100;
             // 
             // colHeadBranch
@@ -194,7 +206,7 @@ namespace DXCP.WinForms
             colHeadBranch.FieldName = "HeadBranch";
             colHeadBranch.Name = "colHeadBranch";
             colHeadBranch.Visible = true;
-            colHeadBranch.VisibleIndex = 6;
+            colHeadBranch.VisibleIndex = 7;
             colHeadBranch.Width = 100;
             // 
             // colIsDraft
@@ -203,7 +215,7 @@ namespace DXCP.WinForms
             colIsDraft.FieldName = "IsDraft";
             colIsDraft.Name = "colIsDraft";
             colIsDraft.Visible = true;
-            colIsDraft.VisibleIndex = 7;
+            colIsDraft.VisibleIndex = 8;
             colIsDraft.Width = 50;
             // 
             // colAdditions
@@ -212,7 +224,7 @@ namespace DXCP.WinForms
             colAdditions.FieldName = "Additions";
             colAdditions.Name = "colAdditions";
             colAdditions.Visible = true;
-            colAdditions.VisibleIndex = 8;
+            colAdditions.VisibleIndex = 9;
             colAdditions.Width = 50;
             // 
             // colDeletions
@@ -221,7 +233,7 @@ namespace DXCP.WinForms
             colDeletions.FieldName = "Deletions";
             colDeletions.Name = "colDeletions";
             colDeletions.Visible = true;
-            colDeletions.VisibleIndex = 9;
+            colDeletions.VisibleIndex = 10;
             colDeletions.Width = 50;
             // 
             // btnRefresh
@@ -270,6 +282,7 @@ namespace DXCP.WinForms
         private DevExpress.XtraGrid.Columns.GridColumn colIsDraft;
         private DevExpress.XtraGrid.Columns.GridColumn colAdditions;
         private DevExpress.XtraGrid.Columns.GridColumn colDeletions;
+        private DevExpress.XtraGrid.Columns.GridColumn colUpdatedAt;
         private DevExpress.XtraEditors.SimpleButton btnRefresh;
         private DevExpress.XtraBars.BarManager barManager;
         private DevExpress.XtraBars.BarDockControl barDockControlTop;
