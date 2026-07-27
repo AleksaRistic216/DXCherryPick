@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace DXCP.WinForms;
+namespace DXCP.Core;
 
 public class ConflictHunk
 {

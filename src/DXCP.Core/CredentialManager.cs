@@ -1,12 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace DXCP.WinForms;
+namespace DXCP.Core;
 
-/// <summary>
-/// Provides secure credential storage using Windows Credential Manager.
-/// Credentials are encrypted using DPAPI and tied to the current Windows user.
-/// </summary>
 public static class CredentialManager
 {
     private const string CredentialName = "DXCherryPick:GitHubPAT";
@@ -44,17 +40,13 @@ public static class CredentialManager
     public static string? GetToken()
     {
         if (!CredRead(CredentialName, CRED_TYPE_GENERIC, 0, out var credentialPtr))
-        {
             return null;
-        }
 
         try
         {
             var credential = Marshal.PtrToStructure<CREDENTIAL>(credentialPtr);
             if (credential.CredentialBlob == IntPtr.Zero || credential.CredentialBlobSize == 0)
-            {
                 return null;
-            }
 
             var byteArray = new byte[credential.CredentialBlobSize];
             Marshal.Copy(credential.CredentialBlob, byteArray, 0, credential.CredentialBlobSize);

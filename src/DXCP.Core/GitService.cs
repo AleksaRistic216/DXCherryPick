@@ -1,7 +1,8 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 
-namespace DXCP.WinForms;
+namespace DXCP.Core;
 
 public class GitService
 {
@@ -39,11 +40,8 @@ public class GitService
         var result = await RunGitAsync($"cherry-pick {commitSha}");
 
         if (result.Success)
-        {
             return new CherryPickResult { Success = true };
-        }
 
-        // Check if it's a conflict
         if (result.Output.Contains("CONFLICT") || result.Error.Contains("CONFLICT") ||
             result.Output.Contains("could not apply") || result.Error.Contains("could not apply"))
         {
@@ -123,6 +121,18 @@ public class GitService
     {
         var result = await RunGitAsync("rev-parse --is-inside-work-tree");
         return result.Success && result.Output.Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public async Task<string?> GetRemoteUrlAsync(string remote = "origin")
+    {
+        var result = await RunGitAsync($"remote get-url {remote}");
+        return result.Success ? result.Output.Trim() : null;
+    }
+
+    public static string? ParseRepoFromRemoteUrl(string url)
+    {
+        var match = Regex.Match(url, @"github\.com[:/](.+?)(?:\.git)?$");
+        return match.Success ? match.Groups[1].Value : null;
     }
 
     public static async Task<bool> IsGitInstalledAsync()

@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
-namespace DXCP.WinForms;
+namespace DXCP.Core;
 
 public class GitHubService : IDisposable
 {
@@ -17,7 +17,7 @@ public class GitHubService : IDisposable
             BaseAddress = new Uri("https://api.github.com/")
         };
         _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("DXCP-WinForms", "1.0"));
+        _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("DXCP", "1.0"));
         _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
     }
 
@@ -49,9 +49,7 @@ public class GitHubService : IDisposable
         var json = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode)
-        {
             throw new Exception($"GitHub API error ({response.StatusCode}): {json}");
-        }
 
         var searchResult = JsonSerializer.Deserialize<GitHubSearchResult>(json, JsonOptions);
         var pullRequests = new List<PullRequest>();
@@ -87,6 +85,43 @@ public class GitHubService : IDisposable
         return pullRequests;
     }
 
+    public async Task<PullRequest?> GetPullRequestAsync(string repoFullName, int prNumber)
+    {
+        var response = await _httpClient.GetAsync($"repos/{repoFullName}/pulls/{prNumber}");
+        if (!response.IsSuccessStatusCode)
+            return null;
+
+        var json = await response.Content.ReadAsStringAsync();
+        var details = JsonSerializer.Deserialize<GitHubPullRequestDetails>(json, JsonOptions);
+        if (details == null)
+            return null;
+
+        var issueResponse = await _httpClient.GetAsync($"repos/{repoFullName}/issues/{prNumber}");
+        GitHubIssueItem? issue = null;
+        if (issueResponse.IsSuccessStatusCode)
+        {
+            var issueJson = await issueResponse.Content.ReadAsStringAsync();
+            issue = JsonSerializer.Deserialize<GitHubIssueItem>(issueJson, JsonOptions);
+        }
+
+        return new PullRequest
+        {
+            Number = prNumber,
+            Title = details.Title ?? string.Empty,
+            State = details.State ?? string.Empty,
+            Repository = repoFullName,
+            Author = details.User?.Login ?? string.Empty,
+            CreatedAt = details.CreatedAt,
+            UpdatedAt = details.UpdatedAt,
+            Url = details.HtmlUrl ?? string.Empty,
+            BaseBranch = details.Base?.Ref ?? string.Empty,
+            HeadBranch = details.Head?.Ref ?? string.Empty,
+            IsDraft = details.Draft,
+            Additions = details.Additions,
+            Deletions = details.Deletions
+        };
+    }
+
     public async Task<List<CommitInfo>> GetPullRequestCommitsAsync(string repoFullName, int prNumber)
     {
         var commits = new List<CommitInfo>();
@@ -105,7 +140,6 @@ public class GitHubService : IDisposable
         {
             foreach (var item in commitItems)
             {
-                // Skip merge commits (commits with more than one parent)
                 if (item.Parents != null && item.Parents.Count > 1)
                     continue;
 
@@ -127,11 +161,10 @@ public class GitHubService : IDisposable
         var versionedBranches = new List<string>();
         var versionPattern = new Regex(@"^\d{4}\.\d+$");
 
-        // GitHub API paginates branches, we need to fetch enough to find versioned ones
         var page = 1;
         const int perPage = 100;
 
-        while (versionedBranches.Count < limit && page <= 5) // Limit to 5 pages to avoid too many requests
+        while (versionedBranches.Count < limit && page <= 5)
         {
             var response = await _httpClient.GetAsync($"repos/{repoFullName}/branches?per_page={perPage}&page={page}");
 
@@ -147,15 +180,12 @@ public class GitHubService : IDisposable
             foreach (var branch in branches)
             {
                 if (branch.Name != null && versionPattern.IsMatch(branch.Name))
-                {
                     versionedBranches.Add(branch.Name);
-                }
             }
 
             page++;
         }
 
-        // Sort descending by version (e.g., 2026.1, 2025.2, 2025.1)
         return versionedBranches
             .OrderByDescending(b => b)
             .Take(limit)
@@ -246,17 +276,20 @@ public class GitHubService : IDisposable
         public DateTime? UpdatedAt { get; set; }
         public bool Draft { get; set; }
         public GitHubUser? User { get; set; }
-        [JsonPropertyName("pull_request")]
-        public GitHubPullRequestRef? PullRequest { get; set; }
-    }
-
-    private class GitHubPullRequestRef
-    {
-        public string? Url { get; set; }
     }
 
     private class GitHubPullRequestDetails
     {
+        public string? Title { get; set; }
+        public string? State { get; set; }
+        [JsonPropertyName("html_url")]
+        public string? HtmlUrl { get; set; }
+        [JsonPropertyName("created_at")]
+        public DateTime CreatedAt { get; set; }
+        [JsonPropertyName("updated_at")]
+        public DateTime? UpdatedAt { get; set; }
+        public bool Draft { get; set; }
+        public GitHubUser? User { get; set; }
         public GitHubBranchRef? Head { get; set; }
         public GitHubBranchRef? Base { get; set; }
         public int Additions { get; set; }

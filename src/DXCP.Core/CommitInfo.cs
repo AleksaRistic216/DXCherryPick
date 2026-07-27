@@ -1,4 +1,4 @@
-namespace DXCP.WinForms;
+namespace DXCP.Core;
 
 public class CommitInfo
 {

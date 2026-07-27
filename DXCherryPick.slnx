@@ -1,3 +1,5 @@
 <Solution>
+  <Project Path="src/DXCP.Core/DXCP.Core.csproj" Id="a1b2c3d4-e5f6-7890-abcd-ef1234567890" />
   <Project Path="src/DXCP.WinForms/DXCP.WinForms.csproj" Id="2b963580-c3be-4df1-b890-e08c5c3742fc" />
+  <Project Path="src/DXCP.Cli/DXCP.Cli.csproj" Id="c9d0e1f2-a3b4-5678-cdef-012345678901" />
 </Solution>

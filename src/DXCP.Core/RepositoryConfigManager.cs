@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace DXCP.WinForms;
+namespace DXCP.Core;
 
 public class RepositoryConfigManager
 {
@@ -17,27 +17,17 @@ public class RepositoryConfigManager
         Load();
     }
 
-    /// <summary>
-    /// Gets the parent worktree folder for a GitHub repository.
-    /// </summary>
     public string? GetWorktreeParentFolder(string githubRepo)
     {
         return _repoMappings.TryGetValue(githubRepo, out var path) ? path : null;
     }
 
-    /// <summary>
-    /// Sets the parent worktree folder for a GitHub repository.
-    /// </summary>
     public void SetWorktreeParentFolder(string githubRepo, string parentFolder)
     {
         _repoMappings[githubRepo] = parentFolder;
         Save();
     }
 
-    /// <summary>
-    /// Gets the worktree path for a specific branch.
-    /// The branch folder is expected to be directly under the parent folder.
-    /// </summary>
     public string? GetWorktreePath(string githubRepo, string branch)
     {
         var parentFolder = GetWorktreeParentFolder(githubRepo);
@@ -55,9 +45,7 @@ public class RepositoryConfigManager
     public void RemoveWorktreeParentFolder(string githubRepo)
     {
         if (_repoMappings.Remove(githubRepo))
-        {
             Save();
-        }
     }
 
     private void Load()
@@ -69,9 +57,7 @@ public class RepositoryConfigManager
                 var json = File.ReadAllText(ConfigFilePath);
                 var mappings = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
                 if (mappings != null)
-                {
                     _repoMappings = new Dictionary<string, string>(mappings, StringComparer.OrdinalIgnoreCase);
-                }
             }
         }
         catch
@@ -85,16 +71,14 @@ public class RepositoryConfigManager
         try
         {
             if (!Directory.Exists(ConfigDirectory))
-            {
                 Directory.CreateDirectory(ConfigDirectory);
-            }
 
             var json = JsonSerializer.Serialize(_repoMappings, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(ConfigFilePath, json);
         }
         catch
         {
-            // Silently fail - config persistence is not critical
+            // Config persistence is not critical
         }
     }
 }
