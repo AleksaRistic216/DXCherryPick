@@ -36,9 +36,11 @@ public class GitHubService : IDisposable
         return _currentUsername;
     }
 
-    public async Task<List<PullRequest>> GetMyPullRequestsAsync(int limit = 30)
+    public async Task<List<PullRequest>> GetPullRequestsAsync(string? author = null, int limit = 30)
     {
-        var username = await GetCurrentUsernameAsync();
+        var username = string.IsNullOrWhiteSpace(author)
+            ? await GetCurrentUsernameAsync()
+            : author.Trim();
 
         var query = Uri.EscapeDataString($"type:pr author:{username} org:DevExpress sort:created-desc");
         var requestUrl = $"search/issues?q={query}&per_page={limit}";
@@ -67,6 +69,7 @@ public class GitHubService : IDisposable
                     Title = item.Title ?? string.Empty,
                     State = item.State ?? string.Empty,
                     Repository = repoFullName,
+                    Author = item.User?.Login ?? string.Empty,
                     CreatedAt = item.CreatedAt,
                     UpdatedAt = item.UpdatedAt,
                     Url = item.HtmlUrl ?? string.Empty,
@@ -242,6 +245,7 @@ public class GitHubService : IDisposable
         [JsonPropertyName("updated_at")]
         public DateTime? UpdatedAt { get; set; }
         public bool Draft { get; set; }
+        public GitHubUser? User { get; set; }
         [JsonPropertyName("pull_request")]
         public GitHubPullRequestRef? PullRequest { get; set; }
     }

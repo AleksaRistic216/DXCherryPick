@@ -48,6 +48,7 @@ namespace DXCP.WinForms
             colAdditions = new DevExpress.XtraGrid.Columns.GridColumn();
             colDeletions = new DevExpress.XtraGrid.Columns.GridColumn();
             colUpdatedAt = new DevExpress.XtraGrid.Columns.GridColumn();
+            colAuthor = new DevExpress.XtraGrid.Columns.GridColumn();
             btnRefresh = new DevExpress.XtraEditors.SimpleButton();
             ((System.ComponentModel.ISupportInitialize)barManager).BeginInit();
             ((System.ComponentModel.ISupportInitialize)popupMenuGrid).BeginInit();
@@ -124,7 +125,7 @@ namespace DXCP.WinForms
             // 
             // gridView
             // 
-            gridView.Columns.AddRange(new DevExpress.XtraGrid.Columns.GridColumn[] { colNumber, colTitle, colState, colRepository, colCreatedAt, colUpdatedAt, colBaseBranch, colHeadBranch, colIsDraft, colAdditions, colDeletions });
+            gridView.Columns.AddRange(new DevExpress.XtraGrid.Columns.GridColumn[] { colNumber, colTitle, colState, colRepository, colAuthor, colCreatedAt, colUpdatedAt, colBaseBranch, colHeadBranch, colIsDraft, colAdditions, colDeletions });
             gridView.DetailHeight = 328;
             gridView.GridControl = gridControl;
             gridView.Name = "gridView";
@@ -168,7 +169,16 @@ namespace DXCP.WinForms
             colRepository.Visible = true;
             colRepository.VisibleIndex = 3;
             colRepository.Width = 180;
-            // 
+            //
+            // colAuthor
+            //
+            colAuthor.Caption = "Author";
+            colAuthor.FieldName = "Author";
+            colAuthor.Name = "colAuthor";
+            colAuthor.Visible = true;
+            colAuthor.VisibleIndex = 4;
+            colAuthor.Width = 120;
+            //
             // colCreatedAt
             // 
             colCreatedAt.Caption = "Created";
@@ -177,7 +187,7 @@ namespace DXCP.WinForms
             colCreatedAt.FieldName = "CreatedAt";
             colCreatedAt.Name = "colCreatedAt";
             colCreatedAt.Visible = true;
-            colCreatedAt.VisibleIndex = 4;
+            colCreatedAt.VisibleIndex = 5;
             colCreatedAt.Width = 120;
             //
             // colUpdatedAt
@@ -188,56 +198,56 @@ namespace DXCP.WinForms
             colUpdatedAt.FieldName = "UpdatedAt";
             colUpdatedAt.Name = "colUpdatedAt";
             colUpdatedAt.Visible = true;
-            colUpdatedAt.VisibleIndex = 5;
+            colUpdatedAt.VisibleIndex = 6;
             colUpdatedAt.Width = 120;
             //
             // colBaseBranch
-            // 
+            //
             colBaseBranch.Caption = "Base Branch";
             colBaseBranch.FieldName = "BaseBranch";
             colBaseBranch.Name = "colBaseBranch";
             colBaseBranch.Visible = true;
-            colBaseBranch.VisibleIndex = 6;
+            colBaseBranch.VisibleIndex = 7;
             colBaseBranch.Width = 100;
-            // 
+            //
             // colHeadBranch
-            // 
+            //
             colHeadBranch.Caption = "Head Branch";
             colHeadBranch.FieldName = "HeadBranch";
             colHeadBranch.Name = "colHeadBranch";
             colHeadBranch.Visible = true;
-            colHeadBranch.VisibleIndex = 7;
+            colHeadBranch.VisibleIndex = 8;
             colHeadBranch.Width = 100;
-            // 
+            //
             // colIsDraft
-            // 
+            //
             colIsDraft.Caption = "Draft";
             colIsDraft.FieldName = "IsDraft";
             colIsDraft.Name = "colIsDraft";
             colIsDraft.Visible = true;
-            colIsDraft.VisibleIndex = 8;
+            colIsDraft.VisibleIndex = 9;
             colIsDraft.Width = 50;
-            // 
+            //
             // colAdditions
-            // 
+            //
             colAdditions.Caption = "+";
             colAdditions.FieldName = "Additions";
             colAdditions.Name = "colAdditions";
             colAdditions.Visible = true;
-            colAdditions.VisibleIndex = 9;
+            colAdditions.VisibleIndex = 10;
             colAdditions.Width = 50;
-            // 
+            //
             // colDeletions
-            // 
+            //
             colDeletions.Caption = "-";
             colDeletions.FieldName = "Deletions";
             colDeletions.Name = "colDeletions";
             colDeletions.Visible = true;
-            colDeletions.VisibleIndex = 10;
+            colDeletions.VisibleIndex = 11;
             colDeletions.Width = 50;
             // 
             // btnRefresh
-            // 
+            //
             btnRefresh.ImageOptions.SvgImage = Properties.Resources.changeview;
             btnRefresh.Location = new Point(12, 11);
             btnRefresh.Name = "btnRefresh";
@@ -283,6 +293,7 @@ namespace DXCP.WinForms
         private DevExpress.XtraGrid.Columns.GridColumn colAdditions;
         private DevExpress.XtraGrid.Columns.GridColumn colDeletions;
         private DevExpress.XtraGrid.Columns.GridColumn colUpdatedAt;
+        private DevExpress.XtraGrid.Columns.GridColumn colAuthor;
         private DevExpress.XtraEditors.SimpleButton btnRefresh;
         private DevExpress.XtraBars.BarManager barManager;
         private DevExpress.XtraBars.BarDockControl barDockControlTop;

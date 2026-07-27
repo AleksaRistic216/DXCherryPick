@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using DevExpress.XtraBars;
 using DevExpress.XtraEditors;
 using DevExpress.XtraSplashScreen;
@@ -7,6 +6,7 @@ namespace DXCP.WinForms;
 
 public partial class Form1 : Form {
     private GitHubService? _gitHubService;
+    private string? _authorFilter;
     private readonly RepositoryConfigManager _repoConfigManager = new();
     private IOverlaySplashScreenHandle? _overlayHandle;
     private readonly OverlayTextPainter _overlayPainter = new();
@@ -66,6 +66,7 @@ public partial class Form1 : Form {
         }
     }
 
+
     private async Task<bool> EnsureAuthenticatedAsync() {
         if(_gitHubService != null)
             return true;
@@ -113,11 +114,7 @@ public partial class Form1 : Form {
         catch(Exception ex) {
             _gitHubService?.Dispose();
             _gitHubService = null;
-
-            Debug.WriteLine("=== AUTHENTICATION ERROR ===");
-            Debug.WriteLine($"Error: {ex.Message}");
-            Debug.WriteLine($"Stack Trace: {ex.StackTrace}");
-
+            ErrorDialog.Show(this, "GitHub authentication failed.", ex);
             return false;
         }
         finally {
@@ -130,19 +127,25 @@ public partial class Form1 : Form {
             return;
 
         btnRefresh.Enabled = false;
-        ShowOverlay(gridControl, "Fetching your pull requests from DevExpress...");
+        var author = GetAuthorFromFilter() ?? _authorFilter;
+        var overlayText = string.IsNullOrEmpty(author)
+            ? "Fetching your pull requests from DevExpress..."
+            : $"Fetching pull requests for '{author}' from DevExpress...";
+        ShowOverlay(gridControl, overlayText);
 
         try {
-            var pullRequests = await _gitHubService.GetMyPullRequestsAsync();
+            var pullRequests = await _gitHubService.GetPullRequestsAsync(author);
             gridControl.DataSource = pullRequests;
             gridView.BestFitColumns();
             colTitle.Width = 300;
-            ApplyDefaultFilter();
+            if (_authorFilter == null) {
+                var currentUser = await _gitHubService.GetCurrentUsernameAsync();
+                _authorFilter = currentUser;
+                ApplyDefaultFilter(currentUser);
+            }
         }
         catch(Exception ex) {
-            Debug.WriteLine("=== LOAD PR ERROR ===");
-            Debug.WriteLine($"Error: {ex.Message}");
-            Debug.WriteLine($"Stack Trace: {ex.StackTrace}");
+            ErrorDialog.Show(this, "Failed to load pull requests.", ex);
         }
         finally {
             CloseOverlay();
@@ -150,11 +153,18 @@ public partial class Form1 : Form {
         }
     }
 
-    private void ApplyDefaultFilter() {
+    private void ApplyDefaultFilter(string author) {
         var twoWeeksAgo = DateTime.Now.AddDays(-14).ToString("MM/dd/yyyy");
-        gridView.ActiveFilterString = $"Contains([Repository], 'dxvcs') AND [UpdatedAt] >= #{twoWeeksAgo}#";
+        gridView.ActiveFilterString = $"Contains([Repository], 'dxvcs') AND [UpdatedAt] >= #{twoWeeksAgo}# AND [Author] = '{author}'";
         gridView.ClearSorting();
         gridView.SortInfo.Add(new DevExpress.XtraGrid.Columns.GridColumnSortInfo(colUpdatedAt, DevExpress.Data.ColumnSortOrder.Descending));
+    }
+
+    private string? GetAuthorFromFilter() {
+        var filter = colAuthor.FilterInfo.FilterString;
+        if (string.IsNullOrEmpty(filter)) return null;
+        var match = System.Text.RegularExpressions.Regex.Match(filter, @"= '([^']+)'");
+        return match.Success ? match.Groups[1].Value : null;
     }
 
     private async Task PerformCherryPickAsync(PullRequest pr) {
@@ -223,12 +233,7 @@ public partial class Form1 : Form {
         }
         catch (Exception ex) {
             CloseOverlay();
-            Debug.WriteLine($"Cherry-pick error: {ex}");
-            XtraMessageBox.Show(
-                $"An error occurred during cherry-pick:\n\n{ex.Message}",
-                "Cherry Pick Error",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+            ErrorDialog.Show(this, "An error occurred during cherry-pick.", ex);
         }
     }
 
@@ -283,6 +288,7 @@ public partial class Form1 : Form {
                     MessageBoxIcon.Warning);
 
                 if (choice == DialogResult.Yes) {
+                    ShowOverlay(gridControl, $"Discarding changes in {targetBranch}...");
                     await gitService.ResetHardAsync();
                     ShowOverlay(gridControl, $"Applying commits to {targetBranch}...");
                 }
@@ -295,12 +301,13 @@ public partial class Form1 : Form {
             var cherryPickBranch = $"cherry-pick/#{pr.Number}-to-{targetBranch}";
 
             try {
-                // Fetch latest
+                // Fetch latest (including PR head to handle fork commits)
                 var fetchResult = await gitService.FetchAsync();
                 if (!fetchResult.Success) {
                     results.Add((targetBranch, false, $"Failed to fetch: {fetchResult.Error}"));
                     continue;
                 }
+                await gitService.FetchPrAsync(pr.Number);
 
                 // Reset to latest remote state
                 await gitService.CheckoutAsync(targetBranch);

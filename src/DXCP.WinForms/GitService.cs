@@ -19,6 +19,11 @@ public class GitService
         return await RunGitAsync($"fetch {remote}");
     }
 
+    public async Task<GitResult> FetchPrAsync(int prNumber, string remote = "origin")
+    {
+        return await RunGitAsync($"fetch {remote} pull/{prNumber}/head");
+    }
+
     public async Task<GitResult> CheckoutAsync(string branch)
     {
         return await RunGitAsync($"checkout {branch}");
