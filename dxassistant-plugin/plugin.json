@@ -1,0 +1,9 @@
+{
+  "id": "dxcherrypick",
+  "name": "DXCherryPick",
+  "version": "1.0.0",
+  "description": "Cherry-pick your GitHub pull requests to versioned DevExpress branches. Builds DXCherryPick from source and launches it.",
+  "group": "Tools",
+  "entry": "main.csx",
+  "svgImage": "svgimages/icon builder/actions_arrow4rightup.svg"
+}
