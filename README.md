@@ -31,6 +31,18 @@ On first run you will be prompted for your GitHub PAT. It is stored securely in 
 
 The grid shows your open and recently updated PRs. Right-click a row and select **Cherry-pick** to start the interactive flow: pick target branches, review commits, resolve any conflicts.
 
+### Resolving conflicts
+
+The conflict dialog offers three ways to settle each conflict, and they can be mixed freely:
+
+- **Keep 〈branch〉 / Keep Incoming** — take one side of the hunk wholesale.
+- **Edit in place** — the file is editable right in the dialog; press **Ctrl+S** (or **Save**) to write it out.
+- **Your own editor** — open the file in VS Code or IntelliJ from the toolbar. The dialog re-reads the file when it regains focus, or on **Reload** / **F5**.
+
+Once a file has no conflict markers left it is staged automatically, and **Continue Cherry-Pick** unlocks when git reports nothing unmerged.
+
+Leaving the dialog any other way — **Abort**, the window close button or Alt+F4 — confirms first and then runs `git cherry-pick --abort`, so the worktree is never left mid-cherry-pick.
+
 ## CLI
 
 ```bash

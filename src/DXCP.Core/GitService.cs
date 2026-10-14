@@ -62,6 +62,15 @@ public class GitService
         return await RunGitAsync("cherry-pick --abort");
     }
 
+    /// <summary>
+    /// True while a cherry-pick is stopped waiting for the user (conflicts pending).
+    /// </summary>
+    public async Task<bool> IsCherryPickInProgressAsync()
+    {
+        var result = await RunGitAsync("rev-parse --verify --quiet CHERRY_PICK_HEAD");
+        return result.Success && !string.IsNullOrWhiteSpace(result.Output);
+    }
+
     public async Task<GitResult> ResetHardAsync()
     {
         return await RunGitAsync("reset --hard HEAD");

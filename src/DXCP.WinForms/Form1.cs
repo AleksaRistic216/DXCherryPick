@@ -353,9 +353,10 @@ public partial class Form1 : Form {
                                     continue; // conflict resolved, move to next commit
                                 }
                             }
-                            else {
+                            // Whatever the user did with the dialog, the cherry-pick must not be
+                            // left in progress — nothing else can switch branches until it is over.
+                            if (await gitService.IsCherryPickInProgressAsync())
                                 await gitService.AbortCherryPickAsync();
-                            }
                             results.Add((targetBranch, false, $"Conflict on commit {commit.ShortSha}. Aborted by user."));
                         }
                         else {
@@ -368,7 +369,9 @@ public partial class Form1 : Form {
 
                 if (!allCommitsSucceeded) {
                     // Switch back to target branch on failure
-                    await gitService.CheckoutAsync(targetBranch);
+                    var restoreError = await RestoreWorktreeAsync(gitService, targetBranch);
+                    if (restoreError != null)
+                        AppendWorktreeWarning(results, targetBranch, restoreError);
                     continue;
                 }
 
@@ -377,7 +380,9 @@ public partial class Form1 : Form {
                 if (!pushResult.Success) {
                     results.Add((targetBranch, false, $"Failed to push: {pushResult.Error}"));
                     // Switch back to target branch
-                    await gitService.CheckoutAsync(targetBranch);
+                    var restoreError = await RestoreWorktreeAsync(gitService, targetBranch);
+                    if (restoreError != null)
+                        AppendWorktreeWarning(results, targetBranch, restoreError);
                     continue;
                 }
 
@@ -399,8 +404,8 @@ public partial class Form1 : Form {
             }
             catch (Exception ex) {
                 results.Add((targetBranch, false, ex.Message));
-                // Try to switch back to target branch
-                try { await gitService.CheckoutAsync(targetBranch); } catch { }
+                // Try to leave the worktree usable — the failure may have hit mid-cherry-pick
+                try { await RestoreWorktreeAsync(gitService, targetBranch); } catch { }
             }
         }
 
@@ -408,6 +413,36 @@ public partial class Form1 : Form {
 
         // Show results
         ShowCherryPickResults(pr, results);
+    }
+
+    /// <summary>
+    /// Puts a worktree back on its target branch after a failed cherry-pick, aborting a
+    /// cherry-pick that is still in progress first — a checkout cannot succeed while files are
+    /// unmerged. Returns null on success, otherwise a description of what is still wrong.
+    /// </summary>
+    private static async Task<string?> RestoreWorktreeAsync(GitService gitService, string targetBranch) {
+        if (await gitService.IsCherryPickInProgressAsync())
+            await gitService.AbortCherryPickAsync();
+
+        var checkout = await gitService.CheckoutAsync(targetBranch);
+        if (checkout.Success)
+            return null;
+
+        // Leftovers in the working tree can still block the checkout — discard them and retry.
+        await gitService.ResetHardAsync();
+        checkout = await gitService.CheckoutAsync(targetBranch);
+        return checkout.Success ? null : checkout.Error.Trim();
+    }
+
+    private static void AppendWorktreeWarning(List<(string Branch, bool Success, string? Error)> results, string targetBranch, string error) {
+        for (var i = results.Count - 1; i >= 0; i--) {
+            if (results[i].Branch != targetBranch)
+                continue;
+            results[i] = (results[i].Branch, results[i].Success, $"{results[i].Error} Worktree still needs attention: {error}");
+            return;
+        }
+
+        results.Add((targetBranch, false, $"Worktree still needs attention: {error}"));
     }
 
     private void ShowCherryPickResults(PullRequest pr, List<(string Branch, bool Success, string? Error)> results) {

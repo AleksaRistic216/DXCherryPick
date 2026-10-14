@@ -12,12 +12,24 @@ public class ConflictResolutionDialog : XtraForm
     private readonly GitService _gitService;
     private readonly List<string> _conflictedFiles;
     private readonly Dictionary<string, List<FilePart>> _parsedFiles = new();
+    private readonly Dictionary<string, string> _lastKnownContent = new();
+    private readonly Dictionary<string, string> _lineEndings = new();
+    private readonly HashSet<string> _filesThatHadMarkers = new();
     private readonly string _targetBranch;
     private readonly CommitInfo _commit;
 
     private readonly List<(string File, ConflictHunk Hunk)> _allHunks = new();
+    private List<string> _unmergedFiles = new();
+    private int _initialConflictCount;
     private int _currentIndex;
     private string _currentFile = "";
+    private bool _syncing;
+    private bool _uiReady;
+    private bool _dirty;
+    private bool _suppressTextChanged;
+    private bool _closeApproved;
+    private bool _closing;
+    private bool _suppressScrollToConflict;
 
     private LabelControl lblDescription = null!;
     private LabelControl lblFileInfo = null!;
@@ -27,6 +39,7 @@ public class ConflictResolutionDialog : XtraForm
     private MemoEdit memoEditor = null!;
     private SimpleButton btnKeepOurs = null!;
     private SimpleButton btnKeepTheirs = null!;
+    private SimpleButton btnSave = null!;
     private LabelControl labelStatus = null!;
     private SimpleButton btnContinue = null!;
     private SimpleButton btnAbort = null!;
@@ -39,10 +52,75 @@ public class ConflictResolutionDialog : XtraForm
         _conflictedFiles = conflictedFiles;
         _commit = commit;
         _targetBranch = targetBranch;
+        _unmergedFiles = new List<string>(conflictedFiles);
         ParseAllFiles();
         BuildHunkList();
+        _initialConflictCount = _allHunks.Count;
         InitializeComponent();
-        Shown += (s, e) => ShowCurrentConflict();
+        Shown += (s, e) =>
+        {
+            _uiReady = true;
+            ShowCurrentConflict();
+        };
+        // Never auto-sync over unsaved editor changes — the user's typing wins until they save or reload.
+        Activated += async (s, e) => { if (_uiReady && !_dirty && !_closing) await SyncWithDiskAsync(false); };
+        FormClosing += ConflictResolutionDialog_FormClosing;
+    }
+
+    /// <summary>
+    /// Leaving without continuing means the cherry-pick has to be abandoned, otherwise the worktree
+    /// is left mid-cherry-pick with unmerged files and the caller cannot switch branches. The window
+    /// close button, Alt+F4 and the Abort button all land here so there is one implementation.
+    /// </summary>
+    private void ConflictResolutionDialog_FormClosing(object? sender, FormClosingEventArgs e)
+    {
+        if (Resolved || _closeApproved) return;
+
+        // Don't hold up an application or Windows shutdown for a confirmation prompt.
+        if (e.CloseReason is not (CloseReason.UserClosing or CloseReason.None)) return;
+
+        // The abort has to finish before the dialog goes away, and FormClosing cannot await.
+        e.Cancel = true;
+        BeginInvoke(new Action(async () => await AbortAndCloseAsync()));
+    }
+
+    private async Task AbortAndCloseAsync()
+    {
+        if (_closing) return;
+        _closing = true;
+        try
+        {
+            if (await _gitService.IsCherryPickInProgressAsync())
+            {
+                var warning = _dirty
+                    ? "Abort the cherry-pick? Your unsaved edits and all conflict resolutions will be lost."
+                    : "Abort the cherry-pick? All conflict resolutions will be lost.";
+
+                if (XtraMessageBox.Show(warning, "Confirm Abort",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                    return;
+
+                var result = await _gitService.AbortCherryPickAsync();
+                if (!result.Success && await _gitService.IsCherryPickInProgressAsync())
+                {
+                    XtraMessageBox.Show(
+                        $"Could not abort the cherry-pick:\n\n{result.Error}\n\n" +
+                        "The worktree is still mid-cherry-pick — resolve the conflicts or run " +
+                        "'git cherry-pick --abort' manually.",
+                        "Abort Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+            }
+
+            Resolved = false;
+            _closeApproved = true;
+            DialogResult = DialogResult.Cancel;
+            Close();
+        }
+        finally
+        {
+            _closing = false;
+        }
     }
 
     private void ParseAllFiles()
@@ -51,8 +129,107 @@ public class ConflictResolutionDialog : XtraForm
         {
             var fullPath = Path.Combine(_gitService.WorkingDirectory, file);
             if (!File.Exists(fullPath)) continue;
-            _parsedFiles[file] = ConflictParser.Parse(File.ReadAllText(fullPath));
+            var content = File.ReadAllText(fullPath);
+            _lastKnownContent[file] = content;
+            _parsedFiles[file] = Parse(file, content);
         }
+    }
+
+    private List<FilePart> Parse(string file, string content)
+    {
+        _lineEndings[file] = DetectLineEnding(content);
+        var parts = ConflictParser.Parse(content);
+        if (parts.Any(p => p.IsConflict))
+            _filesThatHadMarkers.Add(file);
+        return parts;
+    }
+
+    private static string DetectLineEnding(string content)
+    {
+        var crlf = content.Split("\r\n").Length - 1;
+        var lf = content.Count(c => c == '\n');
+        return crlf > lf - crlf ? "\r\n" : "\n";
+    }
+
+    /// <summary>
+    /// Converts editor text (always CRLF) back to the line endings the file uses on disk, so
+    /// resolving a conflict never rewrites every line of a LF file.
+    /// </summary>
+    private string ToFileText(string file, string text)
+    {
+        var normalized = text.Replace("\r\n", "\n").Replace("\r", "\n");
+        return _lineEndings.TryGetValue(file, out var ending) && ending == "\r\n"
+            ? normalized.Replace("\n", "\r\n")
+            : normalized;
+    }
+
+    /// <summary>
+    /// Writes the editor's text to the current file, then re-parses it so the hunk list, staging
+    /// and Continue state reflect what was just typed.
+    /// </summary>
+    private async Task<bool> SaveEditorAsync()
+    {
+        if (!_dirty) return true;
+        if (string.IsNullOrEmpty(_currentFile)) return false;
+
+        var file = _currentFile;
+        var content = ToFileText(file, memoEditor.Text);
+        var fullPath = Path.Combine(_gitService.WorkingDirectory, file);
+
+        try
+        {
+            await File.WriteAllTextAsync(fullPath, content);
+        }
+        catch (Exception ex)
+        {
+            XtraMessageBox.Show($"Could not save {file}:\n\n{ex.Message}", "Save Failed",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
+        }
+
+        _dirty = false;
+        _lastKnownContent[file] = content;
+        _parsedFiles[file] = Parse(file, content);
+
+        var caret = memoEditor.SelectionStart;
+        await RefreshUnmergedFilesAsync();
+
+        // Rebuilding the view must not yank the caret back to the conflict marker mid-edit.
+        _suppressScrollToConflict = true;
+        try
+        {
+            RebuildHunkList();
+            ShowCurrentConflict();
+        }
+        finally
+        {
+            _suppressScrollToConflict = false;
+        }
+
+        BeginInvoke(new Action(() =>
+        {
+            memoEditor.SelectionStart = Math.Min(caret, memoEditor.Text.Length);
+            memoEditor.SelectionLength = 0;
+            memoEditor.ScrollToCaret();
+        }));
+
+        return true;
+    }
+
+    private async Task ReloadRequestedAsync()
+    {
+        if (_dirty)
+        {
+            var confirm = XtraMessageBox.Show(
+                "Discard your unsaved edits and re-read the files from disk?",
+                "Discard Edits", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (confirm != DialogResult.Yes) return;
+
+            _dirty = false;
+            ShowCurrentConflict(); // restore the editor from the last known file content
+        }
+
+        await SyncWithDiskAsync(true);
     }
 
     private void BuildHunkList()
@@ -68,6 +245,106 @@ public class ConflictResolutionDialog : XtraForm
         }
     }
 
+    /// <summary>
+    /// Re-reads the conflicted files from disk so resolutions made in an external editor are
+    /// picked up, stages whatever no longer has conflict markers, and refreshes the UI.
+    /// Files whose content is unchanged keep their in-dialog resolutions.
+    /// </summary>
+    private async Task SyncWithDiskAsync(bool manual)
+    {
+        if (_syncing || _closing || IsDisposed) return;
+        _syncing = true;
+        try
+        {
+            var changedOnDisk = false;
+
+            foreach (var file in _conflictedFiles)
+            {
+                var fullPath = Path.Combine(_gitService.WorkingDirectory, file);
+                if (!File.Exists(fullPath)) continue;
+
+                string content;
+                try
+                {
+                    content = await File.ReadAllTextAsync(fullPath);
+                }
+                catch (IOException)
+                {
+                    continue; // editor may still be writing — try again on the next sync
+                }
+
+                if (_lastKnownContent.TryGetValue(file, out var known) && known == content)
+                    continue;
+
+                _lastKnownContent[file] = content;
+                _parsedFiles[file] = Parse(file, content);
+                changedOnDisk = true;
+            }
+
+            await RefreshUnmergedFilesAsync();
+
+            // The dialog may have been closed while the git calls above were running.
+            if (IsDisposed || Disposing) return;
+
+            if (changedOnDisk)
+            {
+                RebuildHunkList();
+                ShowCurrentConflict();
+            }
+            else
+            {
+                UpdateStatus();
+                if (manual) labelStatus.Text += "  (no changes on disk)";
+            }
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
+    /// <summary>
+    /// Asks git which files are still unmerged, staging any whose conflict markers have been
+    /// resolved away outside this dialog. Files that never had markers (binary or modify/delete
+    /// conflicts) are left alone — staging those is a decision only the user can make.
+    /// </summary>
+    private async Task RefreshUnmergedFilesAsync()
+    {
+        _unmergedFiles = await _gitService.GetConflictedFilesAsync();
+
+        var stagedAny = false;
+        foreach (var file in _unmergedFiles)
+        {
+            if (!_filesThatHadMarkers.Contains(file)) continue;
+            if (!_parsedFiles.TryGetValue(file, out var parts)) continue;
+            if (parts.Any(p => p.IsConflict)) continue;
+            await _gitService.StageFileAsync(file);
+            stagedAny = true;
+        }
+
+        if (stagedAny)
+            _unmergedFiles = await _gitService.GetConflictedFilesAsync();
+    }
+
+    private void RebuildHunkList()
+    {
+        var previousFile = _currentFile;
+
+        _allHunks.Clear();
+        BuildHunkList();
+
+        if (_allHunks.Count == 0)
+        {
+            _currentIndex = 0;
+            return;
+        }
+
+        var index = _allHunks.FindIndex(h => h.File == previousFile && !h.Hunk.IsResolved);
+        if (index < 0) index = _allHunks.FindIndex(h => !h.Hunk.IsResolved);
+        if (index < 0) index = _allHunks.FindIndex(h => h.File == previousFile);
+        _currentIndex = Math.Clamp(index < 0 ? 0 : index, 0, _allHunks.Count - 1);
+    }
+
     private void InitializeComponent()
     {
         var commitMsg = _commit.Message.Split('\n')[0];
@@ -77,14 +354,29 @@ public class ConflictResolutionDialog : XtraForm
         Size = new System.Drawing.Size(1000, 700);
         StartPosition = FormStartPosition.CenterParent;
         MinimizeBox = false;
-        MinimumSize = new System.Drawing.Size(700, 450);
+        MinimumSize = new System.Drawing.Size(860, 450);
+        KeyPreview = true;
+        KeyDown += async (s, e) =>
+        {
+            if (e.KeyCode == Keys.F5)
+            {
+                e.Handled = true;
+                await ReloadRequestedAsync();
+            }
+            else if (e.Control && e.KeyCode == Keys.S)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                await SaveEditorAsync();
+            }
+        };
 
         // === Top bar ===
         var topPanel = new Panel { Dock = DockStyle.Top, Height = 85, Padding = new Padding(12, 8, 12, 0) };
 
         lblDescription = new LabelControl
         {
-            Text = $"Cherry-picking \"{commitMsg}\" ({_commit.ShortSha}) onto {_targetBranch}. For each conflict, choose which version to keep.",
+            Text = $"Cherry-picking \"{commitMsg}\" ({_commit.ShortSha}) onto {_targetBranch}. Keep one side, or edit the file below and press Ctrl+S.",
             Dock = DockStyle.Top,
             AutoSizeMode = LabelAutoSizeMode.None,
             Height = 20,
@@ -102,10 +394,10 @@ public class ConflictResolutionDialog : XtraForm
         var navPanel = new Panel { Dock = DockStyle.Top, Height = 30 };
 
         btnPrev = new SimpleButton { Text = "<  Prev", Size = new System.Drawing.Size(80, 26), Dock = DockStyle.Left };
-        btnPrev.Click += (s, e) => Navigate(-1);
+        btnPrev.Click += async (s, e) => await NavigateAsync(-1);
 
         btnNext = new SimpleButton { Text = "Next  >", Size = new System.Drawing.Size(80, 26), Dock = DockStyle.Left };
-        btnNext.Click += (s, e) => Navigate(1);
+        btnNext.Click += async (s, e) => await NavigateAsync(1);
 
         lblConflictNav = new LabelControl
         {
@@ -127,7 +419,7 @@ public class ConflictResolutionDialog : XtraForm
             ImageOptions = { SvgImage = CreateSvgIcon(IdeaSvg), SvgImageSize = new System.Drawing.Size(18, 18) }
         };
         toolTip.SetToolTip(btnOpenIdea, _ideaCommand != null ? "Open in IntelliJ IDEA" : "IntelliJ IDEA not found in PATH");
-        btnOpenIdea.Click += (s, e) => { if (_ideaCommand != null) OpenInEditor(_ideaCommand); };
+        btnOpenIdea.Click += async (s, e) => { if (_ideaCommand != null) await OpenInEditorAsync(_ideaCommand); };
 
         var editorSpacer = new Panel { Dock = DockStyle.Right, Width = 4 };
 
@@ -139,11 +431,24 @@ public class ConflictResolutionDialog : XtraForm
             ImageOptions = { SvgImage = CreateSvgIcon(VsCodeSvg), SvgImageSize = new System.Drawing.Size(18, 18) }
         };
         toolTip.SetToolTip(btnOpenVsCode, _vsCodeAvailable ? "Open in VS Code" : "VS Code not found in PATH");
-        btnOpenVsCode.Click += (s, e) => OpenInEditor("code");
+        btnOpenVsCode.Click += async (s, e) => await OpenInEditorAsync("code");
+
+        var reloadSpacer = new Panel { Dock = DockStyle.Right, Width = 8 };
+
+        var btnReload = new SimpleButton
+        {
+            Text = "Reload",
+            Size = new System.Drawing.Size(80, 26),
+            Dock = DockStyle.Right
+        };
+        toolTip.SetToolTip(btnReload, "Re-read the files from disk to pick up edits made outside this dialog (F5)");
+        btnReload.Click += async (s, e) => await ReloadRequestedAsync();
 
         navPanel.Controls.Add(btnOpenIdea);
         navPanel.Controls.Add(editorSpacer);
         navPanel.Controls.Add(btnOpenVsCode);
+        navPanel.Controls.Add(reloadSpacer);
+        navPanel.Controls.Add(btnReload);
         navPanel.Controls.Add(lblConflictNav);
         navPanel.Controls.Add(btnNext);
         navPanel.Controls.Add(navSpacer);
@@ -176,11 +481,23 @@ public class ConflictResolutionDialog : XtraForm
 
         var btnSpacer2 = new Panel { Dock = DockStyle.Left, Width = 16 };
 
+        btnSave = new SimpleButton
+        {
+            Text = "Save",
+            Size = new System.Drawing.Size(80, 30),
+            Dock = DockStyle.Left,
+            Enabled = false
+        };
+        toolTip.SetToolTip(btnSave, "Write your edits to the file on disk (Ctrl+S)");
+        btnSave.Click += async (s, e) => await SaveEditorAsync();
+
+        var btnSpacer4 = new Panel { Dock = DockStyle.Left, Width = 16 };
+
         labelStatus = new LabelControl
         {
             Dock = DockStyle.Left,
             AutoSizeMode = LabelAutoSizeMode.None,
-            Size = new System.Drawing.Size(250, 30),
+            Size = new System.Drawing.Size(300, 30),
             Appearance = { Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold) }
         };
 
@@ -199,6 +516,8 @@ public class ConflictResolutionDialog : XtraForm
         btnContinue.Click += BtnContinue_Click;
 
         bottomPanel.Controls.Add(labelStatus);
+        bottomPanel.Controls.Add(btnSpacer4);
+        bottomPanel.Controls.Add(btnSave);
         bottomPanel.Controls.Add(btnSpacer2);
         bottomPanel.Controls.Add(btnKeepTheirs);
         bottomPanel.Controls.Add(btnSpacer1);
@@ -207,14 +526,20 @@ public class ConflictResolutionDialog : XtraForm
         bottomPanel.Controls.Add(btnSpacer3);
         bottomPanel.Controls.Add(btnContinue);
 
-        // === Center: single editor showing raw file ===
+        // === Center: editable view of the raw file ===
         var editorPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12, 4, 12, 4) };
 
         memoEditor = new MemoEdit { Dock = DockStyle.Fill };
-        memoEditor.Properties.ReadOnly = true;
         memoEditor.Properties.WordWrap = false;
         memoEditor.Properties.ScrollBars = ScrollBars.Both;
+        memoEditor.Properties.AcceptsTab = true;
         memoEditor.Font = new System.Drawing.Font("Consolas", 10F);
+        memoEditor.TextChanged += (s, e) =>
+        {
+            if (_suppressTextChanged || _dirty) return;
+            _dirty = true;
+            UpdateStatus();
+        };
 
         editorPanel.Controls.Add(memoEditor);
 
@@ -225,7 +550,21 @@ public class ConflictResolutionDialog : XtraForm
 
     private void ShowCurrentConflict()
     {
-        if (_allHunks.Count == 0) return;
+        if (_allHunks.Count == 0)
+        {
+            if (!_parsedFiles.ContainsKey(_currentFile))
+                _currentFile = _parsedFiles.Keys.FirstOrDefault() ?? "";
+
+            lblFileInfo.Text = _currentFile;
+            lblConflictNav.Text = "  No conflict markers left";
+            btnPrev.Enabled = false;
+            btnNext.Enabled = false;
+            btnKeepOurs.Enabled = false;
+            btnKeepTheirs.Enabled = false;
+            RefreshEditorContent();
+            UpdateStatus();
+            return;
+        }
 
         var (file, hunk) = _allHunks[_currentIndex];
 
@@ -278,12 +617,15 @@ public class ConflictResolutionDialog : XtraForm
             }
         }
 
+        _suppressTextChanged = true;
         memoEditor.Text = sb.ToString().Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
+        _suppressTextChanged = false;
+        _dirty = false;
     }
 
     private void ScrollToCurrentConflict(string file, ConflictHunk hunk)
     {
-        if (hunk.IsResolved) return;
+        if (hunk.IsResolved || _suppressScrollToConflict) return;
 
         var markerText = $"<<<<<<< {_targetBranch}";
         var text = memoEditor.Text;
@@ -315,14 +657,20 @@ public class ConflictResolutionDialog : XtraForm
         }));
     }
 
-    private void Navigate(int direction)
+    private async Task NavigateAsync(int direction)
     {
+        // Moving on commits what was typed, so edits survive the jump.
+        if (!await SaveEditorAsync()) return;
+        if (_allHunks.Count == 0) return;
+
         _currentIndex = Math.Clamp(_currentIndex + direction, 0, _allHunks.Count - 1);
         ShowCurrentConflict();
     }
 
     private async void ResolveCurrent(string choice)
     {
+        if (_dirty || _allHunks.Count == 0) return;
+
         var (file, hunk) = _allHunks[_currentIndex];
         hunk.Resolution = choice;
 
@@ -337,10 +685,12 @@ public class ConflictResolutionDialog : XtraForm
 
         if (allFileHunksResolved)
         {
-            var resolvedContent = ConflictParser.BuildResolved(parts);
+            var resolvedContent = ToFileText(file, ConflictParser.BuildResolved(parts));
             var fullPath = Path.Combine(_gitService.WorkingDirectory, file);
             await File.WriteAllTextAsync(fullPath, resolvedContent);
+            _lastKnownContent[file] = resolvedContent;
             await _gitService.StageFileAsync(file);
+            await RefreshUnmergedFilesAsync();
         }
 
         // Auto-advance to next unresolved
@@ -355,17 +705,39 @@ public class ConflictResolutionDialog : XtraForm
 
     private void UpdateStatus()
     {
-        var resolved = _allHunks.Count(h => h.Hunk.IsResolved);
-        var total = _allHunks.Count;
-        labelStatus.Text = $"{resolved}/{total} conflicts resolved";
-        btnContinue.Enabled = resolved == total && total > 0;
+        btnSave.Enabled = _dirty;
+
+        if (_dirty)
+        {
+            // Keeping a side would rebuild the text from the parsed model and throw the edits away.
+            labelStatus.Text = "Unsaved edits — press Ctrl+S to save";
+            btnKeepOurs.Enabled = false;
+            btnKeepTheirs.Enabled = false;
+            btnContinue.Enabled = false;
+            return;
+        }
+
+        // git is the authority on what is still unmerged: conflicts can also be resolved by hand
+        // or in another editor, in which case no hunks are left to count.
+        var unresolved = _allHunks.Count(h => !h.Hunk.IsResolved);
+        var total = Math.Max(_initialConflictCount, unresolved);
+        var ready = unresolved == 0 && _unmergedFiles.Count == 0;
+
+        if (unresolved == 0 && _unmergedFiles.Count > 0)
+            labelStatus.Text = $"{_unmergedFiles.Count} file(s) still unmerged — stage or resolve them";
+        else
+            labelStatus.Text = $"{total - unresolved}/{total} conflicts resolved";
+
+        btnContinue.Enabled = ready;
     }
 
-    private void OpenInEditor(string command)
+    private async Task OpenInEditorAsync(string command)
     {
-        if (_allHunks.Count == 0) return;
-        var (file, _) = _allHunks[_currentIndex];
-        var fullPath = Path.Combine(_gitService.WorkingDirectory, file);
+        // Hand the editor the text the user is looking at, not a stale copy.
+        if (!await SaveEditorAsync()) return;
+
+        if (string.IsNullOrEmpty(_currentFile)) return;
+        var fullPath = Path.Combine(_gitService.WorkingDirectory, _currentFile);
 
         try
         {
@@ -384,13 +756,32 @@ public class ConflictResolutionDialog : XtraForm
 
     private async void BtnContinue_Click(object? sender, EventArgs e)
     {
+        // The files may have changed since the last sync — verify before committing.
+        if (!await SaveEditorAsync()) return;
+        await SyncWithDiskAsync(false);
+        await RefreshUnmergedFilesAsync(); // in case a sync was already in flight and skipped
+
+        var unresolved = _allHunks.Count(h => !h.Hunk.IsResolved);
+        if (unresolved > 0 || _unmergedFiles.Count > 0)
+        {
+            var detail = _unmergedFiles.Count > 0
+                ? "Still unmerged:\n\n" + string.Join("\n", _unmergedFiles.Select(f => "  " + f))
+                : $"{unresolved} conflict(s) still contain conflict markers.";
+            XtraMessageBox.Show(
+                $"Cannot continue yet.\n\n{detail}",
+                "Conflicts Remaining", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
         btnContinue.Enabled = false;
         btnAbort.Enabled = false;
+        _closing = true; // no background refresh should race the commit and the close
 
         var result = await _gitService.ContinueCherryPickAsync();
         if (result.Success)
         {
             Resolved = true;
+            _closeApproved = true;
             DialogResult = DialogResult.OK;
             Close();
         }
@@ -399,24 +790,16 @@ public class ConflictResolutionDialog : XtraForm
             XtraMessageBox.Show(
                 $"Failed to continue cherry-pick:\n\n{result.Error}\n\n{result.Output}",
                 "Cherry-Pick Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            btnContinue.Enabled = true;
+            _closing = false;
             btnAbort.Enabled = true;
+            await RefreshUnmergedFilesAsync();
+            UpdateStatus();
         }
     }
 
     private async void BtnAbort_Click(object? sender, EventArgs e)
     {
-        var confirm = XtraMessageBox.Show(
-            "Abort the cherry-pick? All conflict resolutions will be lost.",
-            "Confirm Abort", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-
-        if (confirm == DialogResult.Yes)
-        {
-            await _gitService.AbortCherryPickAsync();
-            Resolved = false;
-            DialogResult = DialogResult.Cancel;
-            Close();
-        }
+        await AbortAndCloseAsync();
     }
 
     private static string? FindCommand(params string[] candidates)
