@@ -50,10 +50,12 @@ namespace DXCP.WinForms
             colUpdatedAt = new DevExpress.XtraGrid.Columns.GridColumn();
             colAuthor = new DevExpress.XtraGrid.Columns.GridColumn();
             btnRefresh = new DevExpress.XtraEditors.SimpleButton();
+            toggleCherryPickMode = new DevExpress.XtraEditors.ToggleSwitch();
             ((System.ComponentModel.ISupportInitialize)barManager).BeginInit();
             ((System.ComponentModel.ISupportInitialize)popupMenuGrid).BeginInit();
             ((System.ComponentModel.ISupportInitialize)gridControl).BeginInit();
             ((System.ComponentModel.ISupportInitialize)gridView).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)toggleCherryPickMode.Properties).BeginInit();
             SuspendLayout();
             //
             // barManager
@@ -256,11 +258,23 @@ namespace DXCP.WinForms
             btnRefresh.Text = "Refresh";
             btnRefresh.Click += btnRefresh_Click;
             //
+            // toggleCherryPickMode
+            //
+            toggleCherryPickMode.IsOn = true;
+            toggleCherryPickMode.Location = new Point(124, 13);
+            toggleCherryPickMode.Name = "toggleCherryPickMode";
+            toggleCherryPickMode.Properties.OffText = "Legacy";
+            toggleCherryPickMode.Properties.OnText = "Workflow";
+            toggleCherryPickMode.Size = new Size(140, 22);
+            toggleCherryPickMode.TabIndex = 2;
+            toggleCherryPickMode.ToolTip = "Workflow: run the dxvcs cherry-pick.yml GitHub Actions workflow.\nLegacy: cherry-pick locally using worktrees.";
+            //
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(984, 526);
+            Controls.Add(toggleCherryPickMode);
             Controls.Add(btnRefresh);
             Controls.Add(gridControl);
             Controls.Add(barDockControlLeft);
@@ -274,6 +288,7 @@ namespace DXCP.WinForms
             ((System.ComponentModel.ISupportInitialize)popupMenuGrid).EndInit();
             ((System.ComponentModel.ISupportInitialize)gridControl).EndInit();
             ((System.ComponentModel.ISupportInitialize)gridView).EndInit();
+            ((System.ComponentModel.ISupportInitialize)toggleCherryPickMode.Properties).EndInit();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -295,6 +310,7 @@ namespace DXCP.WinForms
         private DevExpress.XtraGrid.Columns.GridColumn colUpdatedAt;
         private DevExpress.XtraGrid.Columns.GridColumn colAuthor;
         private DevExpress.XtraEditors.SimpleButton btnRefresh;
+        private DevExpress.XtraEditors.ToggleSwitch toggleCherryPickMode;
         private DevExpress.XtraBars.BarManager barManager;
         private DevExpress.XtraBars.BarDockControl barDockControlTop;
         private DevExpress.XtraBars.BarDockControl barDockControlBottom;

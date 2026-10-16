@@ -16,9 +16,10 @@ public class CherryPickDialog : XtraForm
     public List<string> SelectedBranches { get; private set; } = new();
     public bool ForcePush { get; private set; }
 
-    public CherryPickDialog(PullRequest pr, List<CommitInfo> commits, List<string> targetBranches)
+    public CherryPickDialog(PullRequest pr, List<CommitInfo> commits, List<string> targetBranches, bool showForcePush = true)
     {
         InitializeComponent();
+        checkForcePush.Visible = showForcePush;
         PopulateData(pr, commits, targetBranches);
     }
 

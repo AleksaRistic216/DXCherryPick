@@ -187,6 +187,25 @@ public class GitHubService : IDisposable
         return pr?.HtmlUrl;
     }
 
+    public async Task DispatchWorkflowAsync(string repoFullName, string workflowFile, string gitRef, Dictionary<string, string> inputs)
+    {
+        var payload = new
+        {
+            @ref = gitRef,
+            inputs
+        };
+
+        var json = JsonSerializer.Serialize(payload);
+        var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+        var response = await _httpClient.PostAsync($"repos/{repoFullName}/actions/workflows/{workflowFile}/dispatches", content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorJson = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Failed to dispatch workflow ({response.StatusCode}): {errorJson}");
+        }
+    }
+
     private static string ExtractRepoFromUrl(string? repositoryUrl)
     {
         if (string.IsNullOrEmpty(repositoryUrl))
