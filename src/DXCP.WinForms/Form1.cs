@@ -5,6 +5,10 @@ using DevExpress.XtraSplashScreen;
 namespace DXCP.WinForms;
 
 public partial class Form1 : Form {
+    private const string CherryPickWorkflowRepository = "DevExpress/dxvcs";
+    private const string CherryPickWorkflowFile = "cherry-pick.yml";
+    private const string CherryPickWorkflowRef = "main";
+
     private GitHubService? _gitHubService;
     private string? _authorFilter;
     private readonly RepositoryConfigManager _repoConfigManager = new();
@@ -171,21 +175,36 @@ public partial class Form1 : Form {
         if (_gitHubService == null)
             return;
 
-        try {
-            // Check if Git is installed
-            if (!await GitService.IsGitInstalledAsync()) {
-                XtraMessageBox.Show(
-                    "Git is not installed or not found in PATH.\n\nPlease install Git and ensure it's accessible from the command line.",
-                    "Git Not Found",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-                return;
-            }
+        var useWorkflow = toggleCherryPickMode.IsOn;
 
-            // Get or prompt for worktree parent folder
-            var worktreeParent = await GetOrPromptForWorktreeParentAsync(pr.Repository);
-            if (string.IsNullOrEmpty(worktreeParent))
-                return;
+        try {
+            string? worktreeParent = null;
+            if (useWorkflow) {
+                if (!pr.Repository.Equals(CherryPickWorkflowRepository, StringComparison.OrdinalIgnoreCase)) {
+                    XtraMessageBox.Show(
+                        $"The cherry-pick workflow is only available for {CherryPickWorkflowRepository}.\n\nSwitch the toggle to 'Legacy' to cherry-pick {pr.Repository} locally.",
+                        "Workflow Not Available",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+            }
+            else {
+                // Check if Git is installed
+                if (!await GitService.IsGitInstalledAsync()) {
+                    XtraMessageBox.Show(
+                        "Git is not installed or not found in PATH.\n\nPlease install Git and ensure it's accessible from the command line.",
+                        "Git Not Found",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+
+                // Get or prompt for worktree parent folder
+                worktreeParent = await GetOrPromptForWorktreeParentAsync(pr.Repository);
+                if (string.IsNullOrEmpty(worktreeParent))
+                    return;
+            }
 
             ShowOverlay(gridControl, "Loading commits and target branches...");
 
@@ -220,7 +239,7 @@ public partial class Form1 : Form {
             CloseOverlay();
 
             // Show cherry-pick dialog
-            using var dialog = new CherryPickDialog(pr, commits, targetBranches);
+            using var dialog = new CherryPickDialog(pr, commits, targetBranches, showForcePush: !useWorkflow);
             if (dialog.ShowDialog(this) != DialogResult.OK)
                 return;
 
@@ -228,8 +247,13 @@ public partial class Form1 : Form {
             if (selectedBranches.Count == 0)
                 return;
 
-            // Perform cherry-pick for each selected branch using worktrees
-            await ExecuteCherryPicksAsync(pr, commits, selectedBranches, worktreeParent, dialog.ForcePush);
+            if (useWorkflow) {
+                await DispatchCherryPickWorkflowsAsync(pr, selectedBranches);
+            }
+            else {
+                // Perform cherry-pick for each selected branch using worktrees
+                await ExecuteCherryPicksAsync(pr, commits, selectedBranches, worktreeParent!, dialog.ForcePush);
+            }
         }
         catch (Exception ex) {
             CloseOverlay();
@@ -254,6 +278,33 @@ public partial class Form1 : Form {
         var selectedPath = folderDialog.SelectedPath;
         _repoConfigManager.SetWorktreeParentFolder(githubRepo, selectedPath);
         return selectedPath;
+    }
+
+    private async Task DispatchCherryPickWorkflowsAsync(PullRequest pr, List<string> targetBranches) {
+        var results = new List<(string Branch, bool Success, string? Error)>();
+        var runsUrl = $"https://github.com/{CherryPickWorkflowRepository}/actions/workflows/{CherryPickWorkflowFile}";
+
+        foreach (var targetBranch in targetBranches) {
+            ShowOverlay(gridControl, $"Starting cherry-pick workflow for {targetBranch}...");
+            try {
+                await _gitHubService!.DispatchWorkflowAsync(
+                    CherryPickWorkflowRepository,
+                    CherryPickWorkflowFile,
+                    CherryPickWorkflowRef,
+                    new Dictionary<string, string> {
+                        ["pr_number"] = pr.Number.ToString(),
+                        ["target_branch"] = targetBranch
+                    });
+                results.Add((targetBranch, true, $"Workflow started — {runsUrl}"));
+            }
+            catch (Exception ex) {
+                results.Add((targetBranch, false, ex.Message));
+            }
+        }
+
+        CloseOverlay();
+
+        ShowCherryPickResults(pr, results);
     }
 
     private async Task ExecuteCherryPicksAsync(PullRequest pr, List<CommitInfo> commits, List<string> targetBranches, string worktreeParent, bool forcePush) {
